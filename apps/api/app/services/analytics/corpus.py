@@ -1,9 +1,10 @@
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.evaluation import Evaluation, EvaluationChunk
 from app.schemas.analytics import CorpusStats, LabelCount, QualityFlag
+from app.services.ingestion.chunker import CHUNKER_VERSION
 
 
 async def corpus_stats(session: AsyncSession) -> CorpusStats:
@@ -26,6 +27,7 @@ async def corpus_stats(session: AsyncSession) -> CorpusStats:
     ).one()
 
     section_rows = (await session.execute(_section_counts_statement())).all()
+    chunker_rows = (await session.execute(_chunker_counts_statement())).all()
 
     missing_year = await _scalar(
         session,
@@ -42,6 +44,15 @@ async def corpus_stats(session: AsyncSession) -> CorpusStats:
     unsectioned = await _scalar(
         session,
         select(func.count(EvaluationChunk.id)).where(EvaluationChunk.section.is_(None)),
+    )
+    stale_chunker = await _scalar(
+        session,
+        select(func.count(EvaluationChunk.id)).where(
+            or_(
+                EvaluationChunk.chunker_version.is_(None),
+                EvaluationChunk.chunker_version != CHUNKER_VERSION,
+            )
+        ),
     )
     duplicate_title_groups = await _scalar(
         session,
@@ -75,6 +86,10 @@ async def corpus_stats(session: AsyncSession) -> CorpusStats:
             LabelCount(label=str(label), count=int(count))
             for label, count in section_rows
         ],
+        chunker_versions=[
+            LabelCount(label=str(label), count=int(count))
+            for label, count in chunker_rows
+        ],
         top_keywords=top_keywords,
         top_institutions=top_institutions,
         quality_flags=[
@@ -101,6 +116,13 @@ async def corpus_stats(session: AsyncSession) -> CorpusStats:
                 ),
             ),
             QualityFlag(
+                code="stale_chunker_chunks",
+                count=stale_chunker,
+                description=(
+                    f"Chunks not produced by the current {CHUNKER_VERSION} chunker."
+                ),
+            ),
+            QualityFlag(
                 code="duplicate_title_groups",
                 count=duplicate_title_groups,
                 description="Distinct title groups that occur more than once.",
@@ -110,18 +132,24 @@ async def corpus_stats(session: AsyncSession) -> CorpusStats:
 
 
 def _section_counts_statement():
-    """Build a PostgreSQL-safe section aggregation query.
-
-    Group by the underlying nullable column instead of repeating COALESCE in
-    GROUP BY. Repeating COALESCE with a Python literal can compile to distinct
-    asyncpg bind parameters, which PostgreSQL treats as different expressions.
-    """
+    """Build a PostgreSQL-safe section aggregation query."""
     return (
         select(
             func.coalesce(EvaluationChunk.section, "unsectioned").label("label"),
             func.count(EvaluationChunk.id).label("count"),
         )
         .group_by(EvaluationChunk.section)
+        .order_by(func.count(EvaluationChunk.id).desc())
+    )
+
+
+def _chunker_counts_statement():
+    return (
+        select(
+            func.coalesce(EvaluationChunk.chunker_version, "legacy").label("label"),
+            func.count(EvaluationChunk.id).label("count"),
+        )
+        .group_by(EvaluationChunk.chunker_version)
         .order_by(func.count(EvaluationChunk.id).desc())
     )
 

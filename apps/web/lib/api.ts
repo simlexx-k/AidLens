@@ -39,6 +39,7 @@ export type CorpusStats = {
   publication_year_min: number | null;
   publication_year_max: number | null;
   section_counts: LabelCount[];
+  chunker_versions: LabelCount[];
   top_keywords: LabelCount[];
   top_institutions: LabelCount[];
   quality_flags: QualityFlag[];
