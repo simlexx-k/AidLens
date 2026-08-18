@@ -52,6 +52,37 @@ Continue local capacity building and strengthen monitoring systems.
     assert sections.count("executive_summary") == 1
 
 
+def test_chunker_handles_usaid_evaluation_report_variants() -> None:
+    text = """EVALUATION PURPOSE AND EVALUATION QUESTIONS
+The evaluation examined relevance, effectiveness, and sustainability.
+BACKGROUND
+The activity supports early-grade instruction and education systems.
+EVALUATION METHODS AND LIMITATIONS
+The evaluation used a theory-based mixed-methods design.
+KNOWN LIMITATIONS TO THE EVALUATION DESIGN
+Survey response rates varied by region.
+FINDINGS, CONCLUSIONS, AND RECOMMENDATIONS
+The activity remained relevant to national education priorities.
+CONCLUSIONS ON RELEVANCE
+The activity was aligned with counterpart priorities.
+RECOMMENDATIONS ON RELEVANCE
+Continue joint planning with government counterparts.
+"""
+
+    chunks = chunk_document(text, target_chars=220)
+    sections = [chunk.section for chunk in chunks]
+
+    assert sections == [
+        "evaluation_questions",
+        "introduction",
+        "methodology",
+        "limitations",
+        "findings",
+        "conclusions",
+        "recommendations",
+    ]
+
+
 def test_chunker_splits_long_unbroken_pdf_text() -> None:
     text = "EXECUTIVE SUMMARY\n" + "word " * 300
 
