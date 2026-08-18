@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.evaluation import Evaluation, EvaluationChunk
 from app.services.archive.aiddata import AidDataArchiveClient, ArchiveEvaluation
-from app.services.ingestion.chunker import chunk_document
+from app.services.ingestion.chunker import CHUNKER_VERSION, chunk_document
 
 
 class ArchiveIngestor:
@@ -59,6 +59,7 @@ class ArchiveIngestor:
                             ordinal=chunk.ordinal,
                             section=chunk.section,
                             text=chunk.text,
+                            chunker_version=CHUNKER_VERSION,
                         )
                     )
             await session.commit()
