@@ -53,6 +53,7 @@ class EvaluationChunk(TimestampMixin, Base):
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     section: Mapped[str | None] = mapped_column(String(128), index=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    chunker_version: Mapped[str | None] = mapped_column(String(32), index=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
     embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
