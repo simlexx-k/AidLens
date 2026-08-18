@@ -13,6 +13,13 @@ from app.core.config import Settings
 EVALUATION_PATH_RE = re.compile(r"^/evaluations/([A-Za-z0-9_-]+)$")
 YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
 SIZE_RE = re.compile(r"([\d,.]+)\s*(KB|MB)", re.IGNORECASE)
+INSTITUTION_BOUNDARY_RE = re.compile(
+    r"\s+(?=\d{1,6}\s+(?:USAID\.|U\.S\. Agency for International Development))",
+    re.I,
+)
+INSTITUTION_ID_RE = re.compile(r"^\d{1,6}\s*(?:-\s*)?")
+TAXONOMY_CODE_RE = re.compile(r"^(.*?)(?:\s+)?[A-Z]{2}\d{2}\s+(.+)$")
+NUMERIC_SCORE_RE = re.compile(r"\s*\(\d+(?:\.\d+)?\)\s*$")
 
 
 @dataclass(slots=True)
@@ -117,8 +124,8 @@ class AidDataArchiveClient:
             project_title=self._extract_project_title(context),
             abstract=abstract,
             authors=self._split_pipe(metadata.get("Authors")),
-            institutions=self._split_pipe(metadata.get("Institution")),
-            keywords=self._split_pipe(metadata.get("Keywords")),
+            institutions=self._normalize_institutions(metadata.get("Institution")),
+            keywords=self._normalize_keywords(metadata.get("Keywords")),
             locations=self._infer_locations(context),
             contract_codes=self._split_pipe(metadata.get("Contract/Code")),
             source_url=source_url,
@@ -176,7 +183,40 @@ class AidDataArchiveClient:
     def _split_pipe(value: str | None) -> list[str]:
         if not value:
             return []
-        return [part.strip() for part in value.split("|") if part.strip()]
+        return _dedupe(part.strip() for part in value.split("|") if part.strip())
+
+    @staticmethod
+    def _normalize_institutions(value: str | None) -> list[str]:
+        if not value:
+            return []
+        institutions: list[str] = []
+        for pipe_part in value.split("|"):
+            for part in INSTITUTION_BOUNDARY_RE.split(pipe_part.strip()):
+                cleaned = INSTITUTION_ID_RE.sub("", part).strip(" -;|")
+                if cleaned:
+                    institutions.append(cleaned)
+        return _dedupe(institutions)
+
+    @staticmethod
+    def _normalize_keywords(value: str | None) -> list[str]:
+        if not value:
+            return []
+        keywords: list[str] = []
+        for pipe_part in value.split("|"):
+            part = re.sub(r"\s+", " ", pipe_part).strip()
+            if not part:
+                continue
+            taxonomy_match = TAXONOMY_CODE_RE.match(part)
+            candidates = (
+                [taxonomy_match.group(1), taxonomy_match.group(2)]
+                if taxonomy_match
+                else [part]
+            )
+            for candidate in candidates:
+                cleaned = NUMERIC_SCORE_RE.sub("", candidate).strip(" -;|")
+                if cleaned:
+                    keywords.append(cleaned)
+        return _dedupe(keywords)
 
     @staticmethod
     def _parse_size_kb(value: str | None) -> int | None:
@@ -202,3 +242,7 @@ class AidDataArchiveClient:
         # Geography is free text in the archive. Canonical entity resolution is deferred
         # to the ML pipeline rather than pretending a brittle heuristic is ground truth.
         return []
+
+
+def _dedupe(values) -> list[str]:
+    return list(dict.fromkeys(values))
