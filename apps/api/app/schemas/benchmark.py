@@ -1,3 +1,5 @@
+import uuid
+
 from pydantic import BaseModel, Field
 
 
@@ -12,6 +14,31 @@ class BenchmarkQuery(BaseModel):
     query: str = Field(min_length=2, max_length=500)
     judgments: list[RelevanceJudgment] = Field(min_length=1)
     notes: str | None = None
+
+
+class CandidateQuery(BaseModel):
+    query_id: str = Field(min_length=1)
+    query: str = Field(min_length=2, max_length=500)
+
+
+class RankingCandidate(BaseModel):
+    rank: int
+    chunk_id: uuid.UUID
+    evaluation_id: str
+    title: str
+    section: str | None = None
+    text: str
+    score: float
+    lexical_score: float | None = None
+    semantic_score: float | None = None
+    relevance: int | None = Field(default=None, ge=0, le=3)
+
+
+class RankingCandidateSet(BaseModel):
+    query_id: str
+    query: str
+    mode: str
+    candidates: list[RankingCandidate]
 
 
 class RetrievalMetrics(BaseModel):
