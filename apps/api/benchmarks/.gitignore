@@ -1,0 +1,5 @@
+*.local.jsonl
+*.local.json
+reports/
+!queries.example.jsonl
+!judgments.template.jsonl
