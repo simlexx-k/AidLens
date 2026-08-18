@@ -1,13 +1,21 @@
 import asyncio
+import json
 
 import typer
 
 from app.core.config import get_settings
-from app.core.db import SessionLocal
+from app.services.analytics.corpus import corpus_stats
 from app.services.archive.aiddata import AidDataArchiveClient
+from app.services.embeddings.indexer import embed_missing_chunks
+from app.services.embeddings.sentence_transformer import SentenceTransformerEncoder
 from app.services.ingestion.archive import ArchiveIngestor
 
 cli = typer.Typer(no_args_is_help=True)
+
+
+@cli.callback()
+def main() -> None:
+    """AidLens command-line utilities."""
 
 
 @cli.command()
@@ -19,6 +27,8 @@ def ingest(
     """Ingest evaluation metadata and text from the AidData USAID archive."""
 
     async def run() -> None:
+        from app.core.db import SessionLocal
+
         settings = get_settings()
         async with AidDataArchiveClient(settings) as client:
             ingestor = ArchiveIngestor(client, SessionLocal, concurrency=concurrency)
@@ -32,6 +42,47 @@ def ingest(
                     ]
                 )
             )
+
+    asyncio.run(run())
+
+
+@cli.command()
+def embed(
+    batch_size: int = typer.Option(32, min=1, max=256, help="Embedding batch size."),
+    limit: int | None = typer.Option(None, min=1, help="Maximum unembedded chunks to process."),
+) -> None:
+    """Generate embeddings for chunks that do not have vectors yet."""
+
+    async def run() -> None:
+        from app.core.db import SessionLocal
+
+        settings = get_settings()
+        if settings.embedding_provider != "sentence-transformers":
+            raise typer.BadParameter(
+                "Set AIDLENS_EMBEDDING_PROVIDER=sentence-transformers before embedding."
+            )
+        encoder = SentenceTransformerEncoder(settings.embedding_model)
+        processed = await embed_missing_chunks(
+            SessionLocal,
+            encoder,
+            batch_size=batch_size,
+            limit=limit,
+        )
+        typer.echo(f"embedded={processed} model={settings.embedding_model}")
+
+    asyncio.run(run())
+
+
+@cli.command("corpus-report")
+def corpus_report() -> None:
+    """Print corpus coverage and quality statistics as JSON."""
+
+    async def run() -> None:
+        from app.core.db import SessionLocal
+
+        async with SessionLocal() as session:
+            stats = await corpus_stats(session)
+        typer.echo(json.dumps(stats.model_dump(), indent=2))
 
     asyncio.run(run())
 

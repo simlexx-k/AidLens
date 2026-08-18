@@ -16,6 +16,8 @@ services:
   api:
     build:
       context: ./apps/api
+      args:
+        AIDLENS_EXTRAS: ${AIDLENS_API_EXTRAS:-}
     env_file:
       - .env
     environment:
@@ -25,6 +27,7 @@ services:
       uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     volumes:
       - ./apps/api:/app
+      - aidlens_model_cache:/root/.cache/huggingface
     depends_on:
       db:
         condition: service_healthy
@@ -43,3 +46,4 @@ services:
 
 volumes:
   aidlens_pgdata:
+  aidlens_model_cache:
