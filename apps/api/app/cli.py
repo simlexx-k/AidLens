@@ -10,6 +10,11 @@ from app.services.ingestion.archive import ArchiveIngestor
 cli = typer.Typer(no_args_is_help=True)
 
 
+@cli.callback()
+def main() -> None:
+    """AidLens command-line utilities."""
+
+
 @cli.command()
 def ingest(
     pages: int = typer.Option(1, min=1, help="Number of archive result pages to ingest."),
