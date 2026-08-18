@@ -25,16 +25,7 @@ async def corpus_stats(session: AsyncSession) -> CorpusStats:
         )
     ).one()
 
-    section_rows = (
-        await session.execute(
-            select(
-                func.coalesce(EvaluationChunk.section, "unsectioned").label("label"),
-                func.count(EvaluationChunk.id).label("count"),
-            )
-            .group_by(func.coalesce(EvaluationChunk.section, "unsectioned"))
-            .order_by(func.count(EvaluationChunk.id).desc())
-        )
-    ).all()
+    section_rows = (await session.execute(_section_counts_statement())).all()
 
     missing_year = await _scalar(
         session,
@@ -115,6 +106,23 @@ async def corpus_stats(session: AsyncSession) -> CorpusStats:
                 description="Distinct title groups that occur more than once.",
             ),
         ],
+    )
+
+
+def _section_counts_statement():
+    """Build a PostgreSQL-safe section aggregation query.
+
+    Group by the underlying nullable column instead of repeating COALESCE in
+    GROUP BY. Repeating COALESCE with a Python literal can compile to distinct
+    asyncpg bind parameters, which PostgreSQL treats as different expressions.
+    """
+    return (
+        select(
+            func.coalesce(EvaluationChunk.section, "unsectioned").label("label"),
+            func.count(EvaluationChunk.id).label("count"),
+        )
+        .group_by(EvaluationChunk.section)
+        .order_by(func.count(EvaluationChunk.id).desc())
     )
 
 
