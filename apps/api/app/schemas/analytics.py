@@ -21,6 +21,7 @@ class CorpusStats(BaseModel):
     publication_year_min: int | None = None
     publication_year_max: int | None = None
     section_counts: list[LabelCount] = Field(default_factory=list)
+    chunker_versions: list[LabelCount] = Field(default_factory=list)
     top_keywords: list[LabelCount] = Field(default_factory=list)
     top_institutions: list[LabelCount] = Field(default_factory=list)
     quality_flags: list[QualityFlag] = Field(default_factory=list)
