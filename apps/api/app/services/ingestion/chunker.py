@@ -15,7 +15,21 @@ SECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             re.I,
         ),
     ),
-    ("evaluation_questions", re.compile(r"^evaluation questions?$", re.I)),
+    (
+        "methodology",
+        re.compile(
+            r"^evaluation (?:methods? and limitations|design and methodology)$",
+            re.I,
+        ),
+    ),
+    (
+        "evaluation_questions",
+        re.compile(
+            r"^(?:evaluation questions?|evaluation purpose(?: and evaluation questions?)?|"
+            r"purpose of the evaluation)$",
+            re.I,
+        ),
+    ),
     (
         "findings",
         re.compile(
@@ -28,11 +42,24 @@ SECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         "findings",
         re.compile(r"^findings,? conclusions?,? and recommendations?$", re.I),
     ),
-    ("conclusions", re.compile(r"^(?:key )?conclusions?$", re.I)),
-    ("recommendations", re.compile(r"^(?:key )?recommendations?$", re.I)),
-    ("limitations", re.compile(r"^(?:(?:evaluation|study) )?limitations?$", re.I)),
+    (
+        "conclusions",
+        re.compile(r"^(?:key )?conclusions?(?: on .+)?$", re.I),
+    ),
+    (
+        "recommendations",
+        re.compile(r"^(?:key )?recommendations?(?: on .+)?$", re.I),
+    ),
+    (
+        "limitations",
+        re.compile(
+            r"^(?:(?:evaluation|study) )?limitations?|"
+            r"known limitations to the evaluation design$",
+            re.I,
+        ),
+    ),
     ("sustainability", re.compile(r"^sustainability$", re.I)),
-    ("lessons_learned", re.compile(r"^lessons? learned$", re.I)),
+    ("lessons_learned", re.compile(r"^(?:good practices and )?lessons? learned$", re.I)),
 ]
 
 TOC_LEADER_RE = re.compile(r"(?:\.{3,}|…{2,})\s*\d*\s*$")
