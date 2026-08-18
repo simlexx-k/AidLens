@@ -3,6 +3,11 @@
 V0.4 introduces an offline, human-judged benchmark for comparing lexical,
 semantic, and hybrid retrieval before AidRanker is trained.
 
+Benchmark working files live under `apps/api/benchmarks`. That directory is
+visible inside the API container as `/app/benchmarks` because the development
+Compose stack bind-mounts `apps/api` to `/app`. Local files ending in
+`.local.json` or `.local.jsonl` are ignored by Git.
+
 ## Why judgments use evaluation ID + section
 
 Chunk UUIDs change whenever a report is re-chunked. Benchmark labels therefore
@@ -21,23 +26,26 @@ Retrieved candidates are not automatically positive examples.
 
 ## 1. Generate candidate pools
 
-Start with a JSONL query file such as `queries.example.jsonl`, then run:
+Start with `apps/api/benchmarks/queries.example.jsonl`, then run:
 
 ```bash
 docker compose run --rm api \
   python -m app.cli export-ranking-candidates \
-  docs/benchmarks/queries.example.jsonl \
-  --output /tmp/aidlens-candidates.jsonl \
+  benchmarks/queries.example.jsonl \
+  --output benchmarks/candidates.local.jsonl \
   --mode hybrid \
   --top-k 20
 ```
 
-Each candidate includes the evaluation ID, chunk ID, section, passage text,
-lexical score, semantic score, and fused rank. Review these passages and assign
-relevance labels manually.
+The output persists on the host at
+`apps/api/benchmarks/candidates.local.jsonl`. Each candidate includes the
+evaluation ID, chunk ID, section, passage text, lexical score, semantic score,
+and fused rank. Review these passages and assign relevance labels manually.
 
 ## 2. Build a judgment dataset
 
+Copy `apps/api/benchmarks/judgments.template.jsonl` to a local judgment file and
+replace the placeholder evaluation ID with human-reviewed evidence targets.
 Create one JSON object per query:
 
 ```json
@@ -52,10 +60,10 @@ than one evaluation or section answers the question.
 ```bash
 docker compose run --rm api \
   python -m app.cli benchmark \
-  docs/benchmarks/judgments.jsonl \
+  benchmarks/judgments.local.jsonl \
   --modes lexical,semantic,hybrid \
   --top-k 10 \
-  --output /tmp/aidlens-benchmark.json
+  --output benchmarks/report.local.json
 ```
 
 The report contains per-query and mean:
