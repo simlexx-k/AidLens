@@ -4,7 +4,6 @@ import json
 import typer
 
 from app.core.config import get_settings
-from app.core.db import SessionLocal
 from app.services.analytics.corpus import corpus_stats
 from app.services.archive.aiddata import AidDataArchiveClient
 from app.services.embeddings.indexer import embed_missing_chunks
@@ -28,6 +27,8 @@ def ingest(
     """Ingest evaluation metadata and text from the AidData USAID archive."""
 
     async def run() -> None:
+        from app.core.db import SessionLocal
+
         settings = get_settings()
         async with AidDataArchiveClient(settings) as client:
             ingestor = ArchiveIngestor(client, SessionLocal, concurrency=concurrency)
@@ -41,6 +42,7 @@ def ingest(
                     ]
                 )
             )
+
     asyncio.run(run())
 
 
@@ -52,6 +54,8 @@ def embed(
     """Generate embeddings for chunks that do not have vectors yet."""
 
     async def run() -> None:
+        from app.core.db import SessionLocal
+
         settings = get_settings()
         if settings.embedding_provider != "sentence-transformers":
             raise typer.BadParameter(
@@ -65,6 +69,7 @@ def embed(
             limit=limit,
         )
         typer.echo(f"embedded={processed} model={settings.embedding_model}")
+
     asyncio.run(run())
 
 
@@ -73,9 +78,12 @@ def corpus_report() -> None:
     """Print corpus coverage and quality statistics as JSON."""
 
     async def run() -> None:
+        from app.core.db import SessionLocal
+
         async with SessionLocal() as session:
             stats = await corpus_stats(session)
         typer.echo(json.dumps(stats.model_dump(), indent=2))
+
     asyncio.run(run())
 
 
