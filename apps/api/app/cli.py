@@ -1,6 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -114,23 +115,30 @@ def corpus_report() -> None:
 
 @cli.command()
 def benchmark(
-    dataset: Path = typer.Argument(
-        ...,
-        exists=True,
-        dir_okay=False,
-        readable=True,
-        help="JSONL benchmark judgments.",
-    ),
-    modes: str = typer.Option(
-        "lexical,semantic,hybrid",
-        help="Comma-separated retrieval modes.",
-    ),
-    top_k: int = typer.Option(10, min=1, max=50, help="Evaluation cutoff."),
-    output: Path | None = typer.Option(
-        None,
-        dir_okay=False,
-        help="Optional JSON report path.",
-    ),
+    dataset: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="JSONL benchmark judgments.",
+        ),
+    ],
+    modes: Annotated[
+        str,
+        typer.Option(help="Comma-separated retrieval modes."),
+    ] = "lexical,semantic,hybrid",
+    top_k: Annotated[
+        int,
+        typer.Option(min=1, max=50, help="Evaluation cutoff."),
+    ] = 10,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            dir_okay=False,
+            help="Optional JSON report path.",
+        ),
+    ] = None,
 ) -> None:
     """Evaluate retrieval against human relevance judgments."""
 
@@ -161,22 +169,32 @@ def benchmark(
 
 @cli.command("export-ranking-candidates")
 def export_ranking_candidates(
-    queries: Path = typer.Argument(
-        ...,
-        exists=True,
-        dir_okay=False,
-        readable=True,
-        help="JSONL query file.",
-    ),
-    output: Path = typer.Option(
-        ...,
-        "--output",
-        "-o",
-        dir_okay=False,
-        help="Output JSONL candidate pool.",
-    ),
-    mode: str = typer.Option("hybrid", help="lexical, semantic, or hybrid."),
-    top_k: int = typer.Option(20, min=1, max=50, help="Candidates per query."),
+    queries: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="JSONL query file.",
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option(
+            "--output",
+            "-o",
+            dir_okay=False,
+            help="Output JSONL candidate pool.",
+        ),
+    ],
+    mode: Annotated[
+        str,
+        typer.Option(help="lexical, semantic, or hybrid."),
+    ] = "hybrid",
+    top_k: Annotated[
+        int,
+        typer.Option(min=1, max=50, help="Candidates per query."),
+    ] = 20,
 ) -> None:
     """Export retrieval candidates for AidRanker relevance labeling."""
 
