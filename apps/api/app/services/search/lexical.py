@@ -12,24 +12,14 @@ async def lexical_search(
     vector = func.to_tsvector("english", EvaluationChunk.text)
     query = func.plainto_tsquery("english", payload.query)
     rank = func.ts_rank_cd(vector, query).label("rank")
-
     statement = (
         select(EvaluationChunk, Evaluation, rank)
         .join(Evaluation, Evaluation.id == EvaluationChunk.evaluation_id)
         .where(vector.op("@@")(query))
     )
-    if payload.publication_year_from is not None:
-        statement = statement.where(
-            Evaluation.publication_year >= payload.publication_year_from
-        )
-    if payload.publication_year_to is not None:
-        statement = statement.where(
-            Evaluation.publication_year <= payload.publication_year_to
-        )
-
+    statement = _apply_filters(statement, payload)
     statement = statement.order_by(desc(rank)).limit(payload.top_k)
     rows = (await session.execute(statement)).all()
-
     return [
         EvidenceSearchHit(
             chunk_id=chunk.id,
@@ -39,10 +29,22 @@ async def lexical_search(
             section=chunk.section,
             text=_snippet(chunk.text),
             score=float(score),
+            lexical_score=float(score),
+            retrieval_sources=["lexical"],
             source_url=evaluation.source_url,
         )
         for chunk, evaluation, score in rows
     ]
+
+
+def _apply_filters(statement, payload: EvidenceSearchRequest):
+    if payload.publication_year_from is not None:
+        statement = statement.where(Evaluation.publication_year >= payload.publication_year_from)
+    if payload.publication_year_to is not None:
+        statement = statement.where(Evaluation.publication_year <= payload.publication_year_to)
+    if payload.section:
+        statement = statement.where(EvaluationChunk.section == payload.section)
+    return statement
 
 
 def _snippet(text: str, limit: int = 700) -> str:

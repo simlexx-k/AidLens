@@ -7,8 +7,14 @@ runner = CliRunner()
 
 def test_cli_exposes_ingest_subcommand() -> None:
     result = runner.invoke(cli, ["ingest", "--help"])
-
     assert result.exit_code == 0
     assert "--pages" in result.stdout
     assert "--start-page" in result.stdout
     assert "--concurrency" in result.stdout
+
+
+def test_cli_exposes_semantic_commands() -> None:
+    result = runner.invoke(cli, ["--help"])
+    assert result.exit_code == 0
+    assert "embed" in result.stdout
+    assert "corpus-report" in result.stdout
