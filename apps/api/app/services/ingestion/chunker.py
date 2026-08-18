@@ -1,14 +1,48 @@
 import re
 from dataclasses import dataclass
 
+CHUNKER_VERSION = "v2"
+
 SECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("executive_summary", re.compile(r"^\s*executive summary\s*$", re.I)),
-    ("methodology", re.compile(r"^\s*(evaluation )?(methodology|methods?)\s*$", re.I)),
-    ("findings", re.compile(r"^\s*(key )?findings\s*$", re.I)),
-    ("conclusions", re.compile(r"^\s*conclusions?\s*$", re.I)),
-    ("recommendations", re.compile(r"^\s*recommendations?\s*$", re.I)),
-    ("limitations", re.compile(r"^\s*(evaluation )?limitations?\s*$", re.I)),
+    ("abstract", re.compile(r"^abstract$", re.I)),
+    ("executive_summary", re.compile(r"^(?:executive|management) summary$", re.I)),
+    ("introduction", re.compile(r"^(?:introduction|background)$", re.I)),
+    (
+        "methodology",
+        re.compile(
+            r"^(?:(?:evaluation|research) )?"
+            r"(?:methodology|methods?|approach|design)$",
+            re.I,
+        ),
+    ),
+    ("evaluation_questions", re.compile(r"^evaluation questions?$", re.I)),
+    (
+        "findings",
+        re.compile(
+            r"^(?:(?:key|evaluation|major) )?"
+            r"(?:findings|results)(?: and discussion)?$",
+            re.I,
+        ),
+    ),
+    (
+        "findings",
+        re.compile(r"^findings,? conclusions?,? and recommendations?$", re.I),
+    ),
+    ("conclusions", re.compile(r"^(?:key )?conclusions?$", re.I)),
+    ("recommendations", re.compile(r"^(?:key )?recommendations?$", re.I)),
+    ("limitations", re.compile(r"^(?:(?:evaluation|study) )?limitations?$", re.I)),
+    ("sustainability", re.compile(r"^sustainability$", re.I)),
+    ("lessons_learned", re.compile(r"^lessons? learned$", re.I)),
 ]
+
+TOC_LEADER_RE = re.compile(r"(?:\.{3,}|…{2,})\s*\d*\s*$")
+PAGE_PREFIX_RE = re.compile(r"^\s*\d+\s*\|\s*")
+SECTION_PREFIX_RE = re.compile(
+    r"^\s*(?:(?:chapter|section|part)\s+[ivxlcdm\d]+\s*[:.\-]?\s*)?"
+    r"(?:\d+(?:\.\d+)*[.)]?\s*)?",
+    re.I,
+)
+SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9])")
 
 
 @dataclass(slots=True)
@@ -19,14 +53,6 @@ class TextChunk:
 
 
 def chunk_document(text: str, target_chars: int = 1800) -> list[TextChunk]:
-    paragraphs = [
-        re.sub(r"\s+", " ", p).strip()
-        for p in re.split(r"\n\s*\n", text)
-        if p.strip()
-    ]
-    if not paragraphs:
-        paragraphs = [re.sub(r"\s+", " ", text).strip()] if text.strip() else []
-
     chunks: list[TextChunk] = []
     buffer: list[str] = []
     size = 0
@@ -40,33 +66,114 @@ def chunk_document(text: str, target_chars: int = 1800) -> list[TextChunk]:
         buffer = []
         size = 0
 
-    for paragraph in paragraphs:
-        detected = _section_name(paragraph)
-        if detected:
+    for kind, value in _document_units(text):
+        if kind == "section":
             flush()
-            section = detected
+            section = value
             continue
 
-        projected = size + len(paragraph) + (2 if buffer else 0)
-        if buffer and projected > target_chars:
-            carry = buffer[-1] if len(buffer[-1]) <= target_chars // 3 else None
-            flush()
-            if carry:
-                buffer.append(carry)
-                size = len(carry)
-
-        buffer.append(paragraph)
-        size += len(paragraph) + (2 if len(buffer) > 1 else 0)
+        for piece in _split_long_text(value, target_chars):
+            projected = size + len(piece) + (2 if buffer else 0)
+            if buffer and projected > target_chars:
+                carry = buffer[-1] if len(buffer[-1]) <= target_chars // 3 else None
+                flush()
+                if carry:
+                    buffer.append(carry)
+                    size = len(carry)
+            buffer.append(piece)
+            size += len(piece) + (2 if len(buffer) > 1 else 0)
 
     flush()
     return chunks
 
 
-def _section_name(paragraph: str) -> str | None:
-    if len(paragraph) > 120:
+def _document_units(text: str) -> list[tuple[str, str]]:
+    units: list[tuple[str, str]] = []
+    paragraph: list[str] = []
+
+    def flush_paragraph() -> None:
+        nonlocal paragraph
+        if paragraph:
+            units.append(("text", " ".join(paragraph)))
+            paragraph = []
+
+    for raw_line in text.splitlines():
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            flush_paragraph()
+            continue
+
+        detected = _section_name(line)
+        if detected:
+            flush_paragraph()
+            units.append(("section", detected))
+            continue
+
+        paragraph.append(line)
+
+    flush_paragraph()
+    if not units and text.strip():
+        units.append(("text", re.sub(r"\s+", " ", text).strip()))
+    return units
+
+
+def _split_long_text(text: str, target_chars: int) -> list[str]:
+    if len(text) <= target_chars:
+        return [text]
+
+    sentences = [part.strip() for part in SENTENCE_BOUNDARY_RE.split(text) if part.strip()]
+    if len(sentences) == 1:
+        return _split_by_words(text, target_chars)
+
+    pieces: list[str] = []
+    current: list[str] = []
+    current_size = 0
+    for sentence in sentences:
+        if len(sentence) > target_chars:
+            if current:
+                pieces.append(" ".join(current))
+                current = []
+                current_size = 0
+            pieces.extend(_split_by_words(sentence, target_chars))
+            continue
+        projected = current_size + len(sentence) + (1 if current else 0)
+        if current and projected > target_chars:
+            pieces.append(" ".join(current))
+            current = []
+            current_size = 0
+        current.append(sentence)
+        current_size += len(sentence) + (1 if len(current) > 1 else 0)
+    if current:
+        pieces.append(" ".join(current))
+    return pieces
+
+
+def _split_by_words(text: str, target_chars: int) -> list[str]:
+    words = text.split()
+    pieces: list[str] = []
+    current: list[str] = []
+    size = 0
+    for word in words:
+        projected = size + len(word) + (1 if current else 0)
+        if current and projected > target_chars:
+            pieces.append(" ".join(current))
+            current = []
+            size = 0
+        current.append(word)
+        size += len(word) + (1 if len(current) > 1 else 0)
+    if current:
+        pieces.append(" ".join(current))
+    return pieces
+
+
+def _section_name(line: str) -> str | None:
+    if len(line) > 180 or TOC_LEADER_RE.search(line):
         return None
-    normalized = re.sub(r"^(?:\d+(?:\.\d+)*[.)]?\s*)", "", paragraph).strip(" :.-")
+
+    normalized = PAGE_PREFIX_RE.sub("", line)
+    normalized = SECTION_PREFIX_RE.sub("", normalized)
+    normalized = normalized.strip(" :.-|–—")
     for name, pattern in SECTION_PATTERNS:
-        if pattern.match(normalized):
+        if pattern.fullmatch(normalized):
             return name
     return None
