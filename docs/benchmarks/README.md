@@ -34,13 +34,39 @@ docker compose run --rm api \
   benchmarks/queries.example.jsonl \
   --output benchmarks/candidates.local.jsonl \
   --mode hybrid \
-  --top-k 20
+  --top-k 20 \
+  --max-per-evaluation 3
 ```
 
 The output persists on the host at
-`apps/api/benchmarks/candidates.local.jsonl`. Each candidate includes the
-evaluation ID, chunk ID, section, passage text, lexical score, semantic score,
-and fused rank. Review these passages and assign relevance labels manually.
+`apps/api/benchmarks/candidates.local.jsonl`.
+
+Candidate export intentionally oversamples the production retrieval result and
+then caps the annotation pool at three passages per evaluation by default. This
+prevents one long or strongly matched report from crowding the entire human
+labeling pool. It does **not** change production search ranking or benchmark
+ranking.
+
+Each candidate includes both:
+
+- `rank`: its position in the diversified annotation pool
+- `retrieval_rank`: its original position in the unmodified production result
+
+It also includes the evaluation ID, chunk ID, section, passage text, lexical
+score, semantic score, and fused score. Review these passages and assign
+relevance labels manually.
+
+Use a different cap only when needed, for example:
+
+```bash
+docker compose run --rm api \
+  python -m app.cli export-ranking-candidates \
+  benchmarks/queries.example.jsonl \
+  --output benchmarks/candidates.local.jsonl \
+  --mode hybrid \
+  --top-k 20 \
+  --max-per-evaluation 2
+```
 
 ## 2. Build a judgment dataset
 
