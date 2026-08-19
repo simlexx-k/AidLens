@@ -35,6 +35,17 @@ def test_parse_publication_year_skips_future_program_horizon() -> None:
     )
 
 
+def test_parse_publication_year_returns_none_for_future_only_context() -> None:
+    assert (
+        AidDataArchiveClient._parse_publication_year(
+            "Final performance evaluation",
+            "Vision 2050 strategic horizon",
+            current_year=2026,
+        )
+        is None
+    )
+
+
 def test_normalize_institutions_splits_embedded_usaid_offices() -> None:
     value = (
         "7337 - Catholic Relief Services (CRS) "
