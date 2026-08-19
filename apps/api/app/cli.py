@@ -18,7 +18,13 @@ from app.services.evaluation.benchmark import (
 from app.services.evaluation.candidates import (
     generate_candidate_sets,
     load_candidate_queries,
+    load_candidate_sets,
     write_candidate_sets,
+)
+from app.services.evaluation.labels import (
+    compile_labeled_candidates,
+    write_benchmark_queries,
+    write_ranker_records,
 )
 from app.services.ingestion.archive import ArchiveIngestor
 
@@ -213,7 +219,7 @@ def export_ranking_candidates(
         ),
     ] = 3,
 ) -> None:
-    """Export diversified retrieval candidates for AidRanker relevance labeling."""
+    """Export diversified retrieval candidates for relevance labeling."""
 
     async def run() -> None:
         from app.core.db import SessionLocal
@@ -245,6 +251,56 @@ def export_ranking_candidates(
         )
 
     asyncio.run(run())
+
+
+@cli.command("compile-labels")
+def compile_labels(
+    candidates: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Fully human-labeled candidate JSONL.",
+        ),
+    ],
+    judgments_output: Annotated[
+        Path,
+        typer.Option(
+            "--judgments-output",
+            dir_okay=False,
+            help="Anchor-aware benchmark JSONL output.",
+        ),
+    ],
+    ranker_output: Annotated[
+        Path,
+        typer.Option(
+            "--ranker-output",
+            dir_okay=False,
+            help="AidRanker query-passage training JSONL output.",
+        ),
+    ],
+) -> None:
+    """Compile reviewed 0-3 labels into benchmark truth and ranker records."""
+
+    candidate_sets = load_candidate_sets(candidates)
+    judgments, ranker_records = compile_labeled_candidates(candidate_sets)
+    write_benchmark_queries(judgments, judgments_output)
+    write_ranker_records(ranker_records, ranker_output)
+    positives = sum(record.relevance > 0 for record in ranker_records)
+    negatives = len(ranker_records) - positives
+    typer.echo(
+        " ".join(
+            [
+                f"queries={len(judgments)}",
+                f"records={len(ranker_records)}",
+                f"positives={positives}",
+                f"hard_negatives={negatives}",
+                f"judgments={judgments_output}",
+                f"ranker={ranker_output}",
+            ]
+        )
+    )
 
 
 def _semantic_encoder():
