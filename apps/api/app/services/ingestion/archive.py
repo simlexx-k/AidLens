@@ -19,14 +19,26 @@ class ArchiveIngestor:
         self.session_factory = session_factory
         self.semaphore = asyncio.Semaphore(max(1, concurrency))
 
-    async def ingest_pages(self, pages: int, start_page: int = 1) -> dict[str, int]:
+    async def ingest_pages(
+        self,
+        pages: int,
+        start_page: int = 1,
+        *,
+        skip_existing: bool = False,
+    ) -> dict[str, int]:
         discovered = 0
         ingested = 0
+        skipped = 0
         failed = 0
 
         for page in range(start_page, start_page + pages):
             ids = await self.client.list_evaluation_ids(page)
             discovered += len(ids)
+            if skip_existing and ids:
+                existing = await self._existing_ids(ids)
+                skipped += len(existing)
+                ids = [external_id for external_id in ids if external_id not in existing]
+
             results = await asyncio.gather(
                 *(self._ingest_one(item) for item in ids),
                 return_exceptions=True,
@@ -37,7 +49,19 @@ class ArchiveIngestor:
                 else:
                     ingested += 1
 
-        return {"discovered": discovered, "ingested": ingested, "failed": failed}
+        return {
+            "discovered": discovered,
+            "ingested": ingested,
+            "skipped": skipped,
+            "failed": failed,
+        }
+
+    async def _existing_ids(self, ids: list[str]) -> set[str]:
+        async with self.session_factory() as session:
+            rows = await session.scalars(
+                select(Evaluation.external_id).where(Evaluation.external_id.in_(ids))
+            )
+            return set(rows.all())
 
     async def _ingest_one(self, external_id: str) -> str:
         async with self.semaphore:
