@@ -26,6 +26,7 @@ def test_cli_exposes_semantic_and_evaluation_commands() -> None:
     assert "corpus-report" in output
     assert "benchmark" in output
     assert "export-ranking-candidates" in output
+    assert "compile-labels" in output
 
 
 def test_candidate_export_exposes_diversity_control() -> None:
@@ -34,3 +35,12 @@ def test_candidate_export_exposes_diversity_control() -> None:
 
     assert result.exit_code == 0
     assert "--max-per-evaluation" in output
+
+
+def test_compile_labels_exposes_outputs() -> None:
+    result = runner.invoke(cli, ["compile-labels", "--help"])
+    output = unstyle(result.stdout)
+
+    assert result.exit_code == 0
+    assert "--judgments-output" in output
+    assert "--ranker-output" in output
