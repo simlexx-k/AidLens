@@ -31,12 +31,18 @@ def test_compile_labels_builds_benchmark_and_ranker_records() -> None:
             _candidate(
                 rank=1,
                 relevance=3,
-                text="The evaluation found that the intervention improved household food security substantially.",
+                text=(
+                    "The evaluation found that the intervention improved household "
+                    "food security substantially."
+                ),
             ),
             _candidate(
                 rank=2,
                 relevance=0,
-                text="This passage is a high-ranked but irrelevant hard negative for the query.",
+                text=(
+                    "This passage is a high-ranked but irrelevant hard negative "
+                    "for the query."
+                ),
             ),
         ],
     )
@@ -47,6 +53,7 @@ def test_compile_labels_builds_benchmark_and_ranker_records() -> None:
     assert judgments[0].family == "intervention_outcomes"
     assert len(judgments[0].judgments) == 1
     assert judgments[0].judgments[0].relevance == 3
+    assert judgments[0].judgments[0].anchor_text is not None
     assert "improved household food security" in judgments[0].judgments[0].anchor_text
     assert len(records) == 2
     assert [record.relevance for record in records] == [3, 0]
@@ -60,8 +67,16 @@ def test_compile_labels_rejects_partially_labeled_pool() -> None:
         family="general",
         mode="hybrid",
         candidates=[
-            _candidate(rank=1, relevance=3, text="A clearly relevant evidence passage."),
-            _candidate(rank=2, relevance=None, text="This candidate has not been reviewed yet."),
+            _candidate(
+                rank=1,
+                relevance=3,
+                text="A clearly relevant evidence passage.",
+            ),
+            _candidate(
+                rank=2,
+                relevance=None,
+                text="This candidate has not been reviewed yet.",
+            ),
         ],
     )
 
