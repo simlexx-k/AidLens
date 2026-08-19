@@ -48,6 +48,7 @@ async def run_benchmark(
     top_k: int,
     encoder: QueryEncoderProtocol | None = None,
     dataset_name: str = "benchmark",
+    max_per_evaluation: int | None = None,
 ) -> BenchmarkReport:
     normalized_modes = list(dict.fromkeys(modes))
     unsupported = set(normalized_modes) - {"lexical", "semantic", "hybrid"}
@@ -73,6 +74,7 @@ async def run_benchmark(
                 query=query.query,
                 top_k=top_k,
                 mode=mode,
+                max_per_evaluation=max_per_evaluation,
             )
             response = await execute_search(
                 session,
@@ -86,6 +88,7 @@ async def run_benchmark(
                 mode=mode,
                 metrics=evaluate_hits(response.hits, query.judgments, k=top_k),
                 top_evaluation_ids=[hit.evaluation_id for hit in response.hits],
+                top_sections=[hit.section for hit in response.hits],
             )
             query_results.append(result)
             by_mode[mode].append(result)
@@ -95,6 +98,7 @@ async def run_benchmark(
         dataset=dataset_name,
         top_k=top_k,
         embedding_model=encoder.model_name if encoder else None,
+        max_per_evaluation=max_per_evaluation,
         modes=summaries,
         queries=query_results,
     )
@@ -120,6 +124,8 @@ def _summarize_mode(
             mean_recall_at_k=0.0,
             mean_reciprocal_rank=0.0,
             mean_ndcg_at_k=0.0,
+            mean_unique_evaluations_at_k=0.0,
+            mean_duplicate_share_at_k=0.0,
         )
     return BenchmarkModeSummary(
         mode=mode,
@@ -134,6 +140,14 @@ def _summarize_mode(
         ),
         mean_ndcg_at_k=round(
             sum(item.metrics.ndcg_at_k for item in results) / count,
+            6,
+        ),
+        mean_unique_evaluations_at_k=round(
+            sum(item.metrics.unique_evaluations_at_k for item in results) / count,
+            6,
+        ),
+        mean_duplicate_share_at_k=round(
+            sum(item.metrics.duplicate_share_at_k for item in results) / count,
             6,
         ),
     )
