@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from app.services.ingestion.archive import ArchiveIngestor
@@ -5,7 +7,7 @@ from app.services.ingestion.archive import ArchiveIngestor
 
 @pytest.mark.asyncio
 async def test_ingest_pages_skips_existing_records(monkeypatch) -> None:
-    ingestor = ArchiveIngestor(object(), object(), concurrency=1)
+    ingestor = ArchiveIngestor(SimpleNamespace(), object(), concurrency=1)
 
     async def list_evaluation_ids(page):
         return ["A", "B", "C"]
