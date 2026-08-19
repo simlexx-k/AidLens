@@ -1,0 +1,30 @@
+{"query_id":"outcome-001","family":"intervention_outcomes","query":"Which interventions improved household food security among vulnerable populations?"}
+{"query_id":"outcome-002","family":"intervention_outcomes","query":"What livelihood interventions increased household income, assets, or economic resilience?"}
+{"query_id":"outcome-003","family":"intervention_outcomes","query":"Which education interventions improved early-grade reading or literacy outcomes?"}
+{"query_id":"outcome-004","family":"intervention_outcomes","query":"What health system interventions improved access to essential services?"}
+{"query_id":"outcome-005","family":"intervention_outcomes","query":"Which food or cash assistance approaches reduced harmful household coping strategies?"}
+{"query_id":"sustain-001","family":"sustainability_risks","query":"What factors caused beneficiaries to return to assistance after program exit?"}
+{"query_id":"sustain-002","family":"sustainability_risks","query":"What staffing, skills, or personnel turnover problems threatened program sustainability?"}
+{"query_id":"sustain-003","family":"sustainability_risks","query":"What funding or resource allocation constraints limited long-term program sustainability?"}
+{"query_id":"sustain-004","family":"sustainability_risks","query":"How did conflict, drought, flooding, or other shocks undermine sustainable program outcomes?"}
+{"query_id":"sustain-005","family":"sustainability_risks","query":"What weaknesses in local ownership or institutional capacity threatened sustainability?"}
+{"query_id":"recommend-001","family":"recommendations","query":"What recommendations were made to improve access to education and learning support?"}
+{"query_id":"recommend-002","family":"recommendations","query":"What recommendations were made to strengthen food security and resilience programming?"}
+{"query_id":"recommend-003","family":"recommendations","query":"What recommendations were made to strengthen municipal or local government capacity?"}
+{"query_id":"recommend-004","family":"recommendations","query":"What recommendations were made to improve health system resilience and resource allocation?"}
+{"query_id":"recommend-005","family":"recommendations","query":"What recommendations were made to improve stakeholder coordination and collaboration?"}
+{"query_id":"method-001","family":"evaluation_methods","query":"What randomized controlled trial designs were used to estimate program effects?"}
+{"query_id":"method-002","family":"evaluation_methods","query":"What mixed-methods approaches were used to evaluate program effectiveness?"}
+{"query_id":"method-003","family":"evaluation_methods","query":"How were household surveys and evaluation samples designed and selected?"}
+{"query_id":"method-004","family":"evaluation_methods","query":"What qualitative methods such as interviews or focus groups were used in evaluations?"}
+{"query_id":"method-005","family":"evaluation_methods","query":"What cost-effectiveness or cost-efficiency methods were used to assess programs?"}
+{"query_id":"implement-001","family":"implementation_factors","query":"What implementation practices improved program efficiency or effectiveness?"}
+{"query_id":"implement-002","family":"implementation_factors","query":"What coordination arrangements helped programs avoid duplication of effort?"}
+{"query_id":"implement-003","family":"implementation_factors","query":"What barriers hindered implementation of program activities?"}
+{"query_id":"implement-004","family":"implementation_factors","query":"What community engagement practices supported successful implementation?"}
+{"query_id":"implement-005","family":"implementation_factors","query":"What monitoring, data, or learning practices supported adaptive program management?"}
+{"query_id":"transfer-001","family":"transferability_context","query":"Under what conditions were livelihood interventions expected to be effective for vulnerable households?"}
+{"query_id":"transfer-002","family":"transferability_context","query":"What contextual factors changed the effectiveness of food security interventions?"}
+{"query_id":"transfer-003","family":"transferability_context","query":"How did conflict, drought, or flooding affect intervention outcomes across locations?"}
+{"query_id":"transfer-004","family":"transferability_context","query":"What local institutional capacities or governance conditions determined program success?"}
+{"query_id":"transfer-005","family":"transferability_context","query":"What evidence suggested that an intervention could be scaled or sustained in another context?"}
