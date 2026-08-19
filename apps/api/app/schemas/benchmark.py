@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class RelevanceJudgment(BaseModel):
     evaluation_id: str = Field(min_length=1)
     section: str | None = Field(default=None, max_length=128)
+    anchor_text: str | None = Field(default=None, min_length=8, max_length=300)
     relevance: int = Field(default=1, ge=1, le=3)
 
 
@@ -48,6 +49,8 @@ class RetrievalMetrics(BaseModel):
     ndcg_at_k: float
     relevant_count: int
     retrieved_relevant_count: int
+    unique_evaluations_at_k: int
+    duplicate_share_at_k: float
 
 
 class BenchmarkQueryResult(BaseModel):
@@ -56,6 +59,7 @@ class BenchmarkQueryResult(BaseModel):
     mode: str
     metrics: RetrievalMetrics
     top_evaluation_ids: list[str]
+    top_sections: list[str | None]
 
 
 class BenchmarkModeSummary(BaseModel):
@@ -64,11 +68,14 @@ class BenchmarkModeSummary(BaseModel):
     mean_recall_at_k: float
     mean_reciprocal_rank: float
     mean_ndcg_at_k: float
+    mean_unique_evaluations_at_k: float
+    mean_duplicate_share_at_k: float
 
 
 class BenchmarkReport(BaseModel):
     dataset: str
     top_k: int
     embedding_model: str | None = None
+    max_per_evaluation: int | None = None
     modes: list[BenchmarkModeSummary]
     queries: list[BenchmarkQueryResult]

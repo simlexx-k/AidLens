@@ -1,2 +1,2 @@
-# Replace EXAMPLE_EVALUATION_ID with a real AidData evaluation ID after reviewing candidates.
-{"query_id":"q001","query":"What interventions improved household resilience to food insecurity?","judgments":[{"evaluation_id":"EXAMPLE_EVALUATION_ID","section":"findings","relevance":3}],"notes":"Template only; replace with human-reviewed judgments before benchmarking."}
+# Replace the example values with human-reviewed AidData evidence. anchor_text is optional but recommended when a section contains mixed relevance.
+{"query_id":"q001","query":"What interventions improved household resilience to food insecurity?","judgments":[{"evaluation_id":"EXAMPLE_EVALUATION_ID","section":"findings","anchor_text":"distinctive phrase copied from the relevant evidence passage","relevance":3}],"notes":"Template only; replace with human-reviewed judgments before benchmarking."}

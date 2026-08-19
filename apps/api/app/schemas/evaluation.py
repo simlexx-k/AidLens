@@ -36,6 +36,7 @@ class EvidenceSearchRequest(BaseModel):
     publication_year_from: int | None = Field(default=None, ge=1900, le=2100)
     publication_year_to: int | None = Field(default=None, ge=1900, le=2100)
     section: str | None = Field(default=None, max_length=128)
+    max_per_evaluation: int | None = Field(default=None, ge=1, le=20)
 
 
 class EvidenceSearchHit(BaseModel):
@@ -56,4 +57,5 @@ class EvidenceSearchResponse(BaseModel):
     query: str
     mode: str
     embedding_model: str | None = None
+    max_per_evaluation: int | None = None
     hits: list[EvidenceSearchHit]

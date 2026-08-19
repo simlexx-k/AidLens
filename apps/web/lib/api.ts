@@ -16,6 +16,7 @@ export type EvidenceSearchResponse = {
   query: string;
   mode: string;
   embedding_model: string | null;
+  max_per_evaluation: number | null;
   hits: EvidenceHit[];
 };
 
@@ -26,6 +27,7 @@ export type SearchOptions = {
   publicationYearTo?: number;
   section?: string;
   topK?: number;
+  maxPerEvaluation?: number;
 };
 
 export type LabelCount = { label: string; count: number };
@@ -58,6 +60,7 @@ export async function searchEvidence(options: SearchOptions): Promise<EvidenceSe
       publication_year_from: options.publicationYearFrom,
       publication_year_to: options.publicationYearTo,
       section: options.section || undefined,
+      max_per_evaluation: options.maxPerEvaluation,
     }),
   });
   if (!response.ok) {
