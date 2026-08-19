@@ -9,7 +9,7 @@ from app.schemas.benchmark import (
     RankingCandidate,
     RankingCandidateSet,
 )
-from app.schemas.evaluation import EvidenceSearchRequest
+from app.schemas.evaluation import EvidenceSearchHit, EvidenceSearchRequest
 from app.services.search.engine import execute_search
 
 
@@ -44,22 +44,31 @@ async def generate_candidate_sets(
     mode: str,
     top_k: int,
     encoder: QueryEncoderProtocol | None = None,
+    max_per_evaluation: int = 3,
 ) -> list[RankingCandidateSet]:
     if mode not in {"lexical", "semantic", "hybrid"}:
         raise ValueError(f"Unsupported candidate retrieval mode: {mode}")
     if mode in {"semantic", "hybrid"} and encoder is None:
         raise ValueError("Semantic candidate generation requires an embedding encoder.")
+    if max_per_evaluation < 1:
+        raise ValueError("max_per_evaluation must be at least 1.")
 
     outputs: list[RankingCandidateSet] = []
+    pool_k = min(max(top_k * 3, top_k), 50)
     for query in queries:
         query_vector = None
         if encoder is not None and mode in {"semantic", "hybrid"}:
             query_vector = await asyncio.to_thread(encoder.encode_query, query.query)
         response = await execute_search(
             session,
-            EvidenceSearchRequest(query=query.query, mode=mode, top_k=top_k),
+            EvidenceSearchRequest(query=query.query, mode=mode, top_k=pool_k),
             query_vector=query_vector,
             embedding_model=(encoder.model_name if encoder else None),
+        )
+        diversified = diversify_candidates(
+            response.hits,
+            top_k=top_k,
+            max_per_evaluation=max_per_evaluation,
         )
         outputs.append(
             RankingCandidateSet(
@@ -68,7 +77,8 @@ async def generate_candidate_sets(
                 mode=response.mode,
                 candidates=[
                     RankingCandidate(
-                        rank=rank,
+                        rank=annotation_rank,
+                        retrieval_rank=retrieval_rank,
                         chunk_id=hit.chunk_id,
                         evaluation_id=hit.evaluation_id,
                         title=hit.title,
@@ -78,11 +88,35 @@ async def generate_candidate_sets(
                         lexical_score=hit.lexical_score,
                         semantic_score=hit.semantic_score,
                     )
-                    for rank, hit in enumerate(response.hits, start=1)
+                    for annotation_rank, (retrieval_rank, hit) in enumerate(
+                        diversified,
+                        start=1,
+                    )
                 ],
             )
         )
     return outputs
+
+
+def diversify_candidates(
+    hits: list[EvidenceSearchHit],
+    *,
+    top_k: int,
+    max_per_evaluation: int,
+) -> list[tuple[int, EvidenceSearchHit]]:
+    """Build a broader annotation pool without changing production ranking."""
+
+    selected: list[tuple[int, EvidenceSearchHit]] = []
+    counts: dict[str, int] = {}
+    for retrieval_rank, hit in enumerate(hits, start=1):
+        count = counts.get(hit.evaluation_id, 0)
+        if count >= max_per_evaluation:
+            continue
+        selected.append((retrieval_rank, hit))
+        counts[hit.evaluation_id] = count + 1
+        if len(selected) >= top_k:
+            break
+    return selected
 
 
 def write_candidate_sets(items: list[RankingCandidateSet], path: Path) -> None:
