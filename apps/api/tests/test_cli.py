@@ -25,6 +25,7 @@ def test_cli_exposes_semantic_and_evaluation_commands() -> None:
     assert "embed" in output
     assert "corpus-report" in output
     assert "corpus-audit" in output
+    assert "refresh-evaluation" in output
     assert "benchmark" in output
     assert "export-ranking-candidates" in output
     assert "compile-labels" in output
