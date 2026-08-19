@@ -195,8 +195,16 @@ def export_ranking_candidates(
         int,
         typer.Option(min=1, max=50, help="Candidates per query."),
     ] = 20,
+    max_per_evaluation: Annotated[
+        int,
+        typer.Option(
+            min=1,
+            max=20,
+            help="Maximum passages from one evaluation in an annotation pool.",
+        ),
+    ] = 3,
 ) -> None:
-    """Export retrieval candidates for AidRanker relevance labeling."""
+    """Export diversified retrieval candidates for AidRanker relevance labeling."""
 
     async def run() -> None:
         from app.core.db import SessionLocal
@@ -213,10 +221,18 @@ def export_ranking_candidates(
                 mode=selected_mode,
                 top_k=top_k,
                 encoder=encoder,
+                max_per_evaluation=max_per_evaluation,
             )
         write_candidate_sets(candidate_sets, output)
         typer.echo(
-            f"queries={len(candidate_sets)} output={output} mode={selected_mode}"
+            " ".join(
+                [
+                    f"queries={len(candidate_sets)}",
+                    f"output={output}",
+                    f"mode={selected_mode}",
+                    f"max_per_evaluation={max_per_evaluation}",
+                ]
+            )
         )
 
     asyncio.run(run())
