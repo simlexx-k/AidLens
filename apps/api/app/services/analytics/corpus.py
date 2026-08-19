@@ -116,7 +116,9 @@ async def corpus_stats(session: AsyncSession) -> CorpusStats:
             QualityFlag(
                 code="future_publication_year",
                 count=future_year,
-                description="Evaluations with a publication year later than the current year.",
+                description=(
+                    "Evaluations with a publication year later than the current year."
+                ),
             ),
             QualityFlag(
                 code="missing_abstract",
