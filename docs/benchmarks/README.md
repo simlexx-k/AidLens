@@ -69,6 +69,15 @@ docker compose run --rm api \
 Refreshing a text-backed evaluation recreates its chunks and therefore removes
 that evaluation's old embeddings. Re-embed missing chunks afterward.
 
+Live V0.6 scale validation reached 110 evaluations and 18,750 v2 chunks. The
+initial audit identified `PA00ZSBS` as incorrectly parsed with publication year
+2050 from its Mongolia Vision 2050 title. A targeted refresh corrected the
+corpus maximum publication year to 2024 and cleared the future-year quality
+flag. `PA0213MZ` remains a metadata-only Ghana T2E+ record because the AidData
+entry has no plaintext source URL. Two duplicate-title groups remain retained;
+equal titles with distinct archive IDs are not treated as sufficient evidence
+for deletion without content-level confirmation.
+
 ## 2. Generate the V0.6 candidate pool
 
 V0.6 includes `apps/api/benchmarks/queries.v1.jsonl`: 30 questions balanced
