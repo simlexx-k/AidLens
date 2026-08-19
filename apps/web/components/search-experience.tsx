@@ -27,7 +27,7 @@ export function SearchExperience() {
   const [section, setSection] = useState("");
   const [yearFrom, setYearFrom] = useState("");
   const [yearTo, setYearTo] = useState("");
-  const [maxPerEvaluation, setMaxPerEvaluation] = useState("");
+  const [maxPerEvaluation, setMaxPerEvaluation] = useState("3");
   const [data, setData] = useState<EvidenceSearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,10 +69,11 @@ export function SearchExperience() {
     <section className="search-shell">
       <div className="search-heading">
         <span className="eyebrow">Evidence retrieval</span>
-        <h1>Compare lexical and semantic evidence search.</h1>
+        <h1>Compare evidence across evaluations, not just passages.</h1>
         <p>
-          Keep the full-text baseline, add vector retrieval, and inspect the fused ranking
-          instead of treating semantic search as an unmeasured replacement.
+          Hybrid retrieval combines lexical and semantic signals. AidLens limits repeated
+          passages from one evaluation by default so stronger matches do not crowd out
+          potentially useful evidence from other reports.
         </p>
       </div>
       <form onSubmit={onSubmit}>
@@ -108,16 +109,16 @@ export function SearchExperience() {
             </select>
           </label>
           <label>
-            Diversity
+            Evidence spread
             <select
               value={maxPerEvaluation}
               onChange={(event) => setMaxPerEvaluation(event.target.value)}
             >
-              <option value="">Off</option>
-              <option value="1">1 passage / evaluation</option>
-              <option value="2">2 passages / evaluation</option>
-              <option value="3">3 passages / evaluation</option>
-              <option value="5">5 passages / evaluation</option>
+              <option value="3">Balanced · max 3/report</option>
+              <option value="1">Broad · max 1/report</option>
+              <option value="2">Broader · max 2/report</option>
+              <option value="5">Focused · max 5/report</option>
+              <option value="">Uncapped · diagnostic</option>
             </select>
           </label>
           <label>
@@ -146,7 +147,7 @@ export function SearchExperience() {
             <span>
               {data.mode}
               {data.embedding_model ? ` · ${data.embedding_model}` : ""}
-              {data.max_per_evaluation ? ` · max ${data.max_per_evaluation}/evaluation` : ""}
+              {data.max_per_evaluation ? ` · max ${data.max_per_evaluation}/report` : " · uncapped"}
             </span>
           </div>
           {data.hits.length === 0 && (
