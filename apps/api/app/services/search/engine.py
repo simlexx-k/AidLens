@@ -1,5 +1,3 @@
-import asyncio
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.evaluation import EvidenceSearchRequest, EvidenceSearchResponse
@@ -31,9 +29,14 @@ async def execute_search(
     else:
         candidate_k = min(max(payload.top_k * 4, 20), 100)
         candidate_payload = payload.model_copy(update={"top_k": candidate_k})
-        lexical_hits, semantic_hits = await asyncio.gather(
-            lexical_search(session, candidate_payload),
-            semantic_search(session, candidate_payload, query_vector),
+        # AsyncSession is stateful and does not support concurrent database
+        # operations. Run both retrieval queries sequentially on this session;
+        # RRF still fuses the independently ranked candidate lists afterward.
+        lexical_hits = await lexical_search(session, candidate_payload)
+        semantic_hits = await semantic_search(
+            session,
+            candidate_payload,
+            query_vector,
         )
         hits = reciprocal_rank_fusion(
             lexical_hits,
