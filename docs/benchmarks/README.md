@@ -8,12 +8,18 @@ visible inside the API container as `/app/benchmarks` because the development
 Compose stack bind-mounts `apps/api` to `/app`. Local files ending in
 `.local.json` or `.local.jsonl` are ignored by Git.
 
-## Ground truth: evaluation, section, and passage anchor
+## Ground truth: evaluation, section, and optional passage anchor
 
 Chunk UUIDs change whenever a report is re-chunked. Benchmark labels therefore
 reference the stable AidData evaluation ID plus an optional normalized report
-section. An optional `anchor_text` makes a judgment passage-specific when one
-large section contains both relevant and irrelevant chunks.
+section. A judgment without a section treats any passage from that evaluation as
+relevant. A section-specific judgment requires a passage from that section.
+
+V0.5 adds an optional `anchor_text` field for cases where an evaluation/section
+contains both relevant and irrelevant chunks. The anchor is normalized for
+whitespace and case, then matched as a substring of the retrieved passage. Use a
+short, distinctive phrase copied from the relevant evidence rather than an
+entire chunk.
 
 Example:
 
@@ -26,59 +32,56 @@ Relevance is graded:
 - `3`: directly answers the evidence question
 - `2`: clearly relevant supporting evidence
 - `1`: marginally relevant/contextual
-- `0`: irrelevant hard negative in candidate-labeling files only
+- `0`: irrelevant; preserve as a hard negative when it was highly ranked
 
-Only human-reviewed labels become benchmark truth. Retrieved candidates are not
-automatically positive examples.
+Only human-reviewed judgments should be treated as benchmark ground truth.
+Retrieved candidates are not automatically positive examples.
 
-## V0.5 product baseline
+## 1. Scale the corpus carefully
 
-The first four-query benchmark with `BAAI/bge-base-en-v1.5` established hybrid
-retrieval as the strongest uncapped baseline:
-
-| Mode | Recall@10 | MRR | nDCG@10 | Unique evaluations@10 | Duplicate share@10 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Lexical | 0.125 | 0.375 | 0.075385 | 0.5 | 0.291667 |
-| Semantic | 0.750 | 0.791667 | 0.615354 | 3.0 | 0.700 |
-| Hybrid | 0.791667 | 0.875 | 0.631609 | 3.25 | 0.675 |
-
-With `max_per_evaluation=3`, hybrid improved to Recall@10 `0.916667`, MRR
-`0.875`, nDCG@10 `0.682006`, mean unique evaluations@10 `4.5`, and duplicate
-share@10 `0.475`. The user-facing search UI therefore defaults to a maximum of
-three passages per evaluation while the API still permits uncapped experiments.
-
-The sample is intentionally small. Treat these numbers as an engineering
-baseline, not a final model-selection result.
-
-## 1. Expand the corpus first
-
-The initial benchmark was produced from a ten-evaluation corpus. Before labeling
-the V0.6 seed set, ingest a broader slice of the archive and embed new chunks:
+Use resumable ingestion for new archive pages:
 
 ```bash
 docker compose run --rm api \
   python -m app.cli ingest --pages 10 --start-page 2 --skip-existing
-
-docker compose run --rm api \
-  python -m app.cli embed --batch-size 16
 ```
 
-Use `corpus-report` after each batch to monitor section coverage, stale chunker
-versions, and embedding coverage.
+Before embedding a newly expanded corpus, inspect both aggregate quality and
+record-level anomalies:
+
+```bash
+docker compose run --rm api python -m app.cli corpus-report
+docker compose run --rm api python -m app.cli corpus-audit
+```
+
+The audit names future publication years, metadata-only records without text,
+and duplicate-title groups. Publication-year parsing prefers a trailing title
+year when available and ignores future year-like program horizons such as
+"Vision 2050".
+
+Refresh a single problematic record without re-fetching an entire page range:
+
+```bash
+docker compose run --rm api \
+  python -m app.cli refresh-evaluation AIDDATA_EXTERNAL_ID
+```
+
+Refreshing a text-backed evaluation recreates its chunks and therefore removes
+that evaluation's old embeddings. Re-embed missing chunks afterward.
 
 ## 2. Generate the V0.6 candidate pool
 
-`apps/api/benchmarks/queries.v1.jsonl` contains 30 seed questions across six
-families:
+V0.6 includes `apps/api/benchmarks/queries.v1.jsonl`: 30 questions balanced
+across six evidence intents:
 
-- `intervention_outcomes`
-- `sustainability_risks`
-- `recommendations`
-- `evaluation_methods`
-- `implementation_factors`
-- `transferability_context`
+- intervention outcomes
+- sustainability risks
+- recommendations
+- evaluation methods
+- implementation factors
+- transferability context
 
-Generate a diversified hybrid candidate pool:
+Generate a diversified human-review pool:
 
 ```bash
 docker compose run --rm api \
@@ -90,22 +93,19 @@ docker compose run --rm api \
   --max-per-evaluation 3
 ```
 
-Each candidate preserves its original production `retrieval_rank` as well as its
-annotation-pool rank. Query families are preserved through the labeling and
-benchmark pipeline.
+Candidate export oversamples production retrieval and caps the annotation pool
+at three passages per evaluation. Each candidate retains its original
+`retrieval_rank`, query family, evaluation ID, section, passage text, lexical
+score, semantic score, fused score, and a nullable `relevance` field.
 
 ## 3. Label every candidate 0-3
 
-Human reviewers should set every candidate's `relevance` field to `0`, `1`, `2`,
-or `3`. Do not leave partially reviewed candidate pools as benchmark input.
+Review every candidate and replace `relevance: null` with a value from 0 to 3.
+V0.6 compilation is intentionally strict: a partially labeled query is rejected,
+and a query with no positive evidence is not silently admitted to the benchmark.
 
-A query with no genuine positive evidence should not be forced into the benchmark.
-Either broaden the corpus and regenerate its pool or remove that query from the
-judged set.
-
-## 4. Compile benchmark truth and AidRanker records
-
-V0.6 compiles one fully reviewed candidate pool into two outputs:
+Once the pool is fully reviewed, compile both evaluation truth and future
+AidRanker supervision from the same labels:
 
 ```bash
 docker compose run --rm api \
@@ -115,15 +115,23 @@ docker compose run --rm api \
   --ranker-output benchmarks/ranker-v1.local.jsonl
 ```
 
-The compiler is deliberately strict:
+Positive passages become anchor-aware benchmark judgments. Relevance-0 passages
+remain in the ranker dataset as hard negatives.
 
-- every candidate must have a `0-3` label
-- every retained benchmark query must have at least one positive
-- positive candidates become anchor-aware stable benchmark judgments
-- all labeled candidates, including `0` labels, become AidRanker training records
-- high-ranked irrelevant passages are preserved as hard negatives
+## 4. Compare retrieval modes
 
-## 5. Benchmark by mode and query family
+Raw ranking:
+
+```bash
+docker compose run --rm api \
+  python -m app.cli benchmark \
+  benchmarks/judgments-v1.local.jsonl \
+  --modes lexical,semantic,hybrid \
+  --top-k 10 \
+  --output benchmarks/report-v1-raw.local.json
+```
+
+Product-facing diversified ranking:
 
 ```bash
 docker compose run --rm api \
@@ -132,20 +140,36 @@ docker compose run --rm api \
   --modes lexical,semantic,hybrid \
   --top-k 10 \
   --max-per-evaluation 3 \
-  --output benchmarks/report-v1.local.json
+  --output benchmarks/report-v1-diverse3.local.json
 ```
 
-Reports contain overall mode summaries, per-query results, and V0.6 summaries by
-query family. This lets AidLens distinguish, for example, strong method retrieval
-from weak transferability retrieval instead of hiding both inside one mean score.
+Reports contain overall and per-query-family:
 
-## 6. Split before training AidRanker
+- Recall@K
+- Mean Reciprocal Rank (MRR)
+- nDCG@K
+- unique evaluations at K
+- duplicate share at K
 
-Do not train and evaluate a reranker on the same queries. Once enough questions
-are labeled, split by `query_id` rather than by individual passages so passages
-from one question cannot leak across train and test sets.
+The first live four-query baseline with `BAAI/bge-base-en-v1.5` was:
 
-A practical next threshold is at least 30 reviewed queries for pipeline testing,
-then a larger corpus of judgments before treating AidRanker results as robust.
-The V0.6 ranker JSONL is preparation data, not authorization to train a model on
-an undersized benchmark.
+| Mode | Recall@10 | MRR | nDCG@10 |
+| --- | ---: | ---: | ---: |
+| Lexical | 0.125 | 0.375 | 0.075385 |
+| Semantic | 0.750 | 0.791667 | 0.615354 |
+| Hybrid | 0.791667 | 0.875 | 0.631609 |
+
+With a three-passage-per-evaluation cap, the four-query hybrid smoke test
+improved to Recall@10 `0.916667`, MRR `0.875`, and nDCG@10 `0.682006`, while
+mean unique evaluations rose from `3.25` to `4.5` and duplicate share fell from
+`0.675` to `0.475`.
+
+V0.6 deepens the retrieval pool before applying this cap so heavily concentrated
+queries are less likely to return fewer than the requested `top_k`.
+
+## 5. Prepare AidRanker only after benchmark expansion
+
+The compiled ranker file is the starting point for a cross-encoder/reranker. Do
+not train AidRanker on the original four-query smoke test. Expand human judgments,
+split queries into development and held-out test sets, and retain high-ranked
+relevance-0 lexical/semantic/hybrid candidates as hard negatives.
