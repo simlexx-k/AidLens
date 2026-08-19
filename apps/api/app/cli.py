@@ -79,6 +79,22 @@ def ingest(
     asyncio.run(run())
 
 
+@cli.command("refresh-evaluation")
+def refresh_evaluation(external_id: str) -> None:
+    """Refresh one evaluation by AidData external ID."""
+
+    async def run() -> None:
+        from app.core.db import SessionLocal
+
+        settings = get_settings()
+        async with AidDataArchiveClient(settings) as client:
+            ingestor = ArchiveIngestor(client, SessionLocal, concurrency=1)
+            refreshed = await ingestor.ingest_evaluation(external_id)
+        typer.echo(f"refreshed={refreshed}")
+
+    asyncio.run(run())
+
+
 @cli.command()
 def embed(
     batch_size: int = typer.Option(32, min=1, max=256, help="Embedding batch size."),
