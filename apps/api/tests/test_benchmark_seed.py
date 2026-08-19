@@ -4,7 +4,7 @@ from app.services.evaluation.candidates import load_candidate_queries
 
 
 def test_v1_seed_has_balanced_query_families() -> None:
-    path = Path("benchmarks/queries.v1.jsonl")
+    path = Path("apps/api/benchmarks/queries.v1.jsonl")
     queries = load_candidate_queries(path)
 
     assert len(queries) == 30
