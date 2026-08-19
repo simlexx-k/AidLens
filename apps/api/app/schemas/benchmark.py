@@ -23,6 +23,7 @@ class CandidateQuery(BaseModel):
 
 class RankingCandidate(BaseModel):
     rank: int
+    retrieval_rank: int
     chunk_id: uuid.UUID
     evaluation_id: str
     title: str
