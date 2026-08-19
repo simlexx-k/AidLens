@@ -71,7 +71,12 @@ async def execute_search(
 def _diversity_pool_k(payload: EvidenceSearchRequest) -> int:
     if payload.max_per_evaluation is None:
         return payload.top_k
-    return min(max(payload.top_k * 4, 20), 100)
+
+    # A diversity cap can discard many otherwise high-ranked passages from a
+    # dominant report. Search deeply enough to refill the requested top_k from
+    # other evaluations instead of returning a short result list prematurely.
+    multiplier = max(payload.max_per_evaluation * 3, 8)
+    return min(max(payload.top_k * multiplier, 40), 100)
 
 
 def _finalize_hits(
