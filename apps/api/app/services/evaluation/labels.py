@@ -19,7 +19,11 @@ def compile_labeled_candidates(
     ranker_records: list[RankerTrainingRecord] = []
 
     for item in candidate_sets:
-        unlabeled = [candidate.rank for candidate in item.candidates if candidate.relevance is None]
+        unlabeled = [
+            candidate.rank
+            for candidate in item.candidates
+            if candidate.relevance is None
+        ]
         if unlabeled:
             ranks = ", ".join(str(rank) for rank in unlabeled[:10])
             suffix = "..." if len(unlabeled) > 10 else ""
@@ -28,7 +32,11 @@ def compile_labeled_candidates(
                 "Assign every candidate a relevance value from 0 to 3 before compiling."
             )
 
-        positives = [candidate for candidate in item.candidates if candidate.relevance and candidate.relevance > 0]
+        positives = [
+            candidate
+            for candidate in item.candidates
+            if candidate.relevance and candidate.relevance > 0
+        ]
         if not positives:
             raise ValueError(
                 f"Query {item.query_id} has no positive judgments. "
@@ -95,11 +103,13 @@ def write_benchmark_queries(items: list[BenchmarkQuery], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for item in items:
-            handle.write(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n")
+            payload = json.dumps(item.model_dump(mode="json"), ensure_ascii=False)
+            handle.write(payload + "\n")
 
 
 def write_ranker_records(items: list[RankerTrainingRecord], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for item in items:
-            handle.write(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n")
+            payload = json.dumps(item.model_dump(mode="json"), ensure_ascii=False)
+            handle.write(payload + "\n")
