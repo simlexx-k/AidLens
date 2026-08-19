@@ -132,6 +132,14 @@ def benchmark(
         int,
         typer.Option(min=1, max=50, help="Evaluation cutoff."),
     ] = 10,
+    max_per_evaluation: Annotated[
+        int | None,
+        typer.Option(
+            min=1,
+            max=20,
+            help="Optional per-evaluation result cap for diversity experiments.",
+        ),
+    ] = None,
     output: Annotated[
         Path | None,
         typer.Option(
@@ -158,6 +166,7 @@ def benchmark(
                 top_k=top_k,
                 encoder=encoder,
                 dataset_name=dataset.name,
+                max_per_evaluation=max_per_evaluation,
             )
         if output:
             write_report(report, output)
