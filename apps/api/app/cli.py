@@ -6,7 +6,7 @@ from typing import Annotated
 import typer
 
 from app.core.config import get_settings
-from app.services.analytics.corpus import corpus_stats
+from app.services.analytics.corpus import corpus_audit, corpus_stats
 from app.services.archive.aiddata import AidDataArchiveClient
 from app.services.embeddings.indexer import embed_missing_chunks
 from app.services.embeddings.sentence_transformer import SentenceTransformerEncoder
@@ -115,6 +115,20 @@ def corpus_report() -> None:
         async with SessionLocal() as session:
             stats = await corpus_stats(session)
         typer.echo(json.dumps(stats.model_dump(), indent=2))
+
+    asyncio.run(run())
+
+
+@cli.command("corpus-audit")
+def corpus_audit_command() -> None:
+    """Print record-level corpus anomalies that need human review."""
+
+    async def run() -> None:
+        from app.core.db import SessionLocal
+
+        async with SessionLocal() as session:
+            audit = await corpus_audit(session)
+        typer.echo(json.dumps(audit.model_dump(), indent=2))
 
     asyncio.run(run())
 
