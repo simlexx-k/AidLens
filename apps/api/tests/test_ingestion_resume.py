@@ -3,34 +3,41 @@ import pytest
 from app.services.ingestion.archive import ArchiveIngestor
 
 
-class FakeArchiveClient:
-    async def list_evaluation_ids(self, page: int) -> list[str]:
-        assert page == 3
-        return ["EXISTING", "NEW-1", "NEW-2"]
+@pytest.mark.asyncio
+async def test_ingest_pages_skips_existing_records(monkeypatch) -> None:
+    ingestor = ArchiveIngestor(object(), object(), concurrency=1)
 
+    async def list_evaluation_ids(page):
+        return ["A", "B", "C"]
 
-class ResumeTestIngestor(ArchiveIngestor):
-    async def _existing_ids(self, ids: list[str]) -> set[str]:
-        assert "EXISTING" in ids
-        return {"EXISTING"}
+    async def existing_ids(ids):
+        return {"A", "C"}
 
-    async def _ingest_one(self, external_id: str) -> str:
+    ingested: list[str] = []
+
+    async def ingest_one(external_id):
+        ingested.append(external_id)
         return external_id
+
+    ingestor.client.list_evaluation_ids = list_evaluation_ids
+    monkeypatch.setattr(ingestor, "_existing_ids", existing_ids)
+    monkeypatch.setattr(ingestor, "_ingest_one", ingest_one)
+
+    stats = await ingestor.ingest_pages(1, skip_existing=True)
+
+    assert stats == {"discovered": 3, "ingested": 1, "skipped": 2, "failed": 0}
+    assert ingested == ["B"]
 
 
 @pytest.mark.asyncio
-async def test_skip_existing_avoids_refetching_known_evaluations() -> None:
-    ingestor = ResumeTestIngestor(FakeArchiveClient(), None, concurrency=2)  # type: ignore[arg-type]
+async def test_ingest_evaluation_refreshes_one_external_id(monkeypatch) -> None:
+    ingestor = ArchiveIngestor(object(), object(), concurrency=1)
 
-    stats = await ingestor.ingest_pages(
-        pages=1,
-        start_page=3,
-        skip_existing=True,
-    )
+    async def ingest_one(external_id):
+        return f"refreshed-{external_id}"
 
-    assert stats == {
-        "discovered": 3,
-        "ingested": 2,
-        "skipped": 1,
-        "failed": 0,
-    }
+    monkeypatch.setattr(ingestor, "_ingest_one", ingest_one)
+
+    result = await ingestor.ingest_evaluation("ABC123")
+
+    assert result == "refreshed-ABC123"
