@@ -27,6 +27,7 @@ export function SearchExperience() {
   const [section, setSection] = useState("");
   const [yearFrom, setYearFrom] = useState("");
   const [yearTo, setYearTo] = useState("");
+  const [maxPerEvaluation, setMaxPerEvaluation] = useState("");
   const [data, setData] = useState<EvidenceSearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,7 @@ export function SearchExperience() {
           section,
           publicationYearFrom: yearFrom ? Number(yearFrom) : undefined,
           publicationYearTo: yearTo ? Number(yearTo) : undefined,
+          maxPerEvaluation: maxPerEvaluation ? Number(maxPerEvaluation) : undefined,
         }),
       );
     } catch (err) {
@@ -106,6 +108,19 @@ export function SearchExperience() {
             </select>
           </label>
           <label>
+            Diversity
+            <select
+              value={maxPerEvaluation}
+              onChange={(event) => setMaxPerEvaluation(event.target.value)}
+            >
+              <option value="">Off</option>
+              <option value="1">1 passage / evaluation</option>
+              <option value="2">2 passages / evaluation</option>
+              <option value="3">3 passages / evaluation</option>
+              <option value="5">5 passages / evaluation</option>
+            </select>
+          </label>
+          <label>
             From year
             <input
               value={yearFrom}
@@ -131,6 +146,7 @@ export function SearchExperience() {
             <span>
               {data.mode}
               {data.embedding_model ? ` · ${data.embedding_model}` : ""}
+              {data.max_per_evaluation ? ` · max ${data.max_per_evaluation}/evaluation` : ""}
             </span>
           </div>
           {data.hits.length === 0 && (
