@@ -82,3 +82,14 @@ async def test_lexical_search_can_cap_results_per_evaluation(monkeypatch) -> Non
 
     assert response.max_per_evaluation == 1
     assert [hit.evaluation_id for hit in response.hits] == ["A", "B", "C"]
+
+
+def test_diversified_search_uses_deeper_candidate_pool() -> None:
+    payload = EvidenceSearchRequest(
+        query="education access",
+        mode="hybrid",
+        top_k=10,
+        max_per_evaluation=3,
+    )
+
+    assert engine._diversity_pool_k(payload) == 90
