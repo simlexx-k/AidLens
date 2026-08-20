@@ -56,6 +56,13 @@ def test_negative_effect_language_is_classified_as_contradicting() -> None:
     assert claim.stance_basis == ["no significant effect"]
 
 
+def test_negated_improvement_without_contrast_is_not_mixed() -> None:
+    _, claim = _claim("The intervention did not improve learning outcomes.")
+
+    assert claim.stance == "contradicts"
+    assert claim.stance_basis == ["did not improve"]
+
+
 def test_conflicting_explicit_signals_are_mixed() -> None:
     _, claim = _claim(
         "The intervention improved attendance, but did not improve learning outcomes."
