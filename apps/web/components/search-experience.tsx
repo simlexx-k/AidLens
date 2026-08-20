@@ -166,7 +166,7 @@ export function SearchExperience() {
 }
 
 function EvidenceGroup({ group }: { group: EvidenceEvaluationGroup }) {
-  const context = [...group.locations, ...group.keywords].slice(0, 6);
+  const context = [...group.locations, ...group.institutions, ...group.keywords].slice(0, 6);
 
   return (
     <article className="evidence-group">
