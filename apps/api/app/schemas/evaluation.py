@@ -97,10 +97,16 @@ class EvidenceSearchResponse(BaseModel):
     reranker_model: str | None = None
     reranker_model_fingerprint: str | None = None
     reranker_alpha: float | None = None
+    reranker_backend: str | None = None
+    reranker_batch_size: int | None = None
+    reranker_device: str | None = None
+    reranker_model_load_latency_ms: float | None = None
     reranker_fallback_reason: str | None = None
     ranking_pipeline: list[str] = Field(default_factory=list)
+    query_encoding_latency_ms: float | None = None
     first_stage_latency_ms: float | None = None
     reranker_latency_ms: float | None = None
     total_search_latency_ms: float | None = None
+    request_latency_ms: float | None = None
     groups: list[EvidenceEvaluationGroup] = Field(default_factory=list)
     hits: list[EvidenceSearchHit]

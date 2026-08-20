@@ -161,6 +161,16 @@ async def _semantic_response(
             else None
         ),
         reranker_alpha=reranker.alpha if reranker_applied and reranker is not None else None,
+        reranker_backend=reranker.backend if reranker_applied and reranker is not None else None,
+        reranker_batch_size=(
+            reranker.batch_size if reranker_applied and reranker is not None else None
+        ),
+        reranker_device=reranker.device if reranker_applied and reranker is not None else None,
+        reranker_model_load_latency_ms=(
+            reranker.model_load_latency_ms
+            if reranker_applied and reranker is not None
+            else None
+        ),
         reranker_fallback_reason=fallback_reason,
         ranking_pipeline=_pipeline(pipeline, payload),
     )
@@ -181,6 +191,10 @@ def _build_response(
     reranker_model: str | None = None,
     reranker_model_fingerprint: str | None = None,
     reranker_alpha: float | None = None,
+    reranker_backend: str | None = None,
+    reranker_batch_size: int | None = None,
+    reranker_device: str | None = None,
+    reranker_model_load_latency_ms: float | None = None,
     reranker_fallback_reason: str | None = None,
 ) -> EvidenceSearchResponse:
     return EvidenceSearchResponse(
@@ -193,6 +207,10 @@ def _build_response(
         reranker_model=reranker_model,
         reranker_model_fingerprint=reranker_model_fingerprint,
         reranker_alpha=reranker_alpha,
+        reranker_backend=reranker_backend,
+        reranker_batch_size=reranker_batch_size,
+        reranker_device=reranker_device,
+        reranker_model_load_latency_ms=reranker_model_load_latency_ms,
         reranker_fallback_reason=reranker_fallback_reason,
         ranking_pipeline=ranking_pipeline,
         first_stage_latency_ms=first_stage_latency_ms,

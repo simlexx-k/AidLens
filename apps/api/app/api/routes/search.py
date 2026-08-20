@@ -1,34 +1,17 @@
 import asyncio
-from functools import lru_cache
+from time import perf_counter
 
 from fastapi import APIRouter, HTTPException
 
 from app.api.dependencies import DbSession
 from app.core.config import get_settings
 from app.schemas.evaluation import EvidenceSearchRequest, EvidenceSearchResponse
-from app.services.embeddings.sentence_transformer import SentenceTransformerEncoder
+from app.services.embeddings.provider import get_embedding_encoder
+from app.services.ranker.provider import get_aidranker_service
 from app.services.ranker.serving import AidRankerService
 from app.services.search.engine import execute_search
 
 router = APIRouter(prefix="/search", tags=["search"])
-
-
-@lru_cache(maxsize=4)
-def _encoder(model_name: str) -> SentenceTransformerEncoder:
-    return SentenceTransformerEncoder(model_name)
-
-
-@lru_cache(maxsize=4)
-def _aidranker(
-    model_name_or_path: str,
-    candidate_k: int,
-    fail_open: bool,
-) -> AidRankerService:
-    return AidRankerService(
-        model_name_or_path,
-        candidate_k=candidate_k,
-        fail_open=fail_open,
-    )
 
 
 @router.post("/evidence", response_model=EvidenceSearchResponse)
@@ -36,6 +19,7 @@ async def search_evidence(
     payload: EvidenceSearchRequest,
     db: DbSession,
 ) -> EvidenceSearchResponse:
+    request_started = perf_counter()
     settings = get_settings()
     needs_vector = payload.mode in {"auto", "semantic", "hybrid"}
     semantic_enabled = settings.embedding_provider == "sentence-transformers"
@@ -58,9 +42,12 @@ async def search_evidence(
 
     query_vector: list[float] | None = None
     embedding_model: str | None = None
+    query_encoding_latency_ms: float | None = None
     if needs_vector and semantic_enabled:
-        encoder = _encoder(settings.embedding_model)
+        encoding_started = perf_counter()
+        encoder = get_embedding_encoder(settings.embedding_model)
         query_vector = await asyncio.to_thread(encoder.encode_query, payload.query)
+        query_encoding_latency_ms = _elapsed_ms(encoding_started)
         embedding_model = settings.embedding_model
     elif payload.mode in {"semantic", "hybrid"}:
         raise HTTPException(
@@ -74,14 +61,16 @@ async def search_evidence(
 
     reranker: AidRankerService | None = None
     if payload.rerank != "disabled" and aidranker_enabled and query_vector is not None:
-        reranker = _aidranker(
+        reranker = get_aidranker_service(
             settings.aidranker_model,
             settings.aidranker_candidate_k,
+            settings.aidranker_batch_size,
+            settings.aidranker_device,
             settings.aidranker_fail_open,
         )
 
     try:
-        return await execute_search(
+        response = await execute_search(
             db,
             payload,
             query_vector=query_vector,
@@ -90,3 +79,14 @@ async def search_evidence(
         )
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return response.model_copy(
+        update={
+            "query_encoding_latency_ms": query_encoding_latency_ms,
+            "request_latency_ms": _elapsed_ms(request_started),
+        }
+    )
+
+
+def _elapsed_ms(started: float) -> float:
+    return round((perf_counter() - started) * 1000.0, 3)

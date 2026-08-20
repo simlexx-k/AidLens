@@ -1,7 +1,11 @@
 import json
+import math
 from pathlib import Path
+from statistics import median
+from time import perf_counter
 from typing import Annotated
 
+import httpx
 import typer
 
 from app.services.ranker.dataset import (
@@ -18,7 +22,10 @@ from app.services.ranker.evaluation import (
 from app.services.ranker.fixed_fusion import evaluate_aidranker_fixed_fusion_model
 from app.services.ranker.training import DEFAULT_RANKER_MODEL, train_aidranker
 
-cli = typer.Typer(no_args_is_help=True, help="Offline AidRanker V1 experiments.")
+cli = typer.Typer(
+    no_args_is_help=True,
+    help="Offline AidRanker V1 experiments and serving benchmarks.",
+)
 
 
 @cli.command("split")
@@ -256,6 +263,112 @@ def evaluate_fusion_command(
         write_ranker_report(report, output)
         typer.echo(f"report={output}")
     typer.echo(json.dumps(report, indent=2))
+
+
+@cli.command("benchmark-serving")
+def benchmark_serving_command(
+    api_url: Annotated[
+        str,
+        typer.Option(help="Evidence search endpoint URL."),
+    ] = "http://localhost:8000/api/v1/search/evidence",
+    query: Annotated[
+        str,
+        typer.Option(help="Representative production evidence query."),
+    ] = "What implementation factors improved program outcomes?",
+    repeats: Annotated[int, typer.Option(min=2, max=100)] = 7,
+    top_k: Annotated[int, typer.Option(min=1, max=50)] = 10,
+    max_per_evaluation: Annotated[int, typer.Option(min=1, max=20)] = 3,
+    timeout_seconds: Annotated[float, typer.Option(min=1.0, max=300.0)] = 120.0,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False),
+    ] = None,
+) -> None:
+    """Benchmark repeated warm production-path searches against a running API."""
+
+    payload = {
+        "query": query,
+        "mode": "auto",
+        "rerank": "aidranker",
+        "top_k": top_k,
+        "max_per_evaluation": max_per_evaluation,
+    }
+    samples: list[dict[str, object]] = []
+    with httpx.Client(timeout=timeout_seconds) as client:
+        for index in range(repeats):
+            started = perf_counter()
+            response = client.post(api_url, json=payload)
+            wall_ms = round((perf_counter() - started) * 1000.0, 3)
+            response.raise_for_status()
+            body = response.json()
+            if not body.get("reranker_applied"):
+                raise typer.BadParameter(
+                    "Benchmark requires AidRanker to be applied; check API serving configuration."
+                )
+            samples.append(
+                {
+                    "run": index + 1,
+                    "wall_ms": wall_ms,
+                    "query_encoding_ms": body.get("query_encoding_latency_ms"),
+                    "first_stage_ms": body.get("first_stage_latency_ms"),
+                    "reranker_ms": body.get("reranker_latency_ms"),
+                    "search_internal_ms": body.get("total_search_latency_ms"),
+                    "request_ms": body.get("request_latency_ms"),
+                    "model_load_ms": body.get("reranker_model_load_latency_ms"),
+                    "backend": body.get("reranker_backend"),
+                    "batch_size": body.get("reranker_batch_size"),
+                    "device": body.get("reranker_device"),
+                    "hits": len(body.get("hits", [])),
+                    "groups": len(body.get("groups", [])),
+                }
+            )
+
+    report = {
+        "api_url": api_url,
+        "query": query,
+        "repeats": repeats,
+        "samples": samples,
+        "summary": {
+            key: _latency_summary(samples, key)
+            for key in (
+                "wall_ms",
+                "query_encoding_ms",
+                "first_stage_ms",
+                "reranker_ms",
+                "search_internal_ms",
+                "request_ms",
+            )
+        },
+        "serving": {
+            "backend": samples[-1]["backend"],
+            "batch_size": samples[-1]["batch_size"],
+            "device": samples[-1]["device"],
+            "model_load_ms": samples[-1]["model_load_ms"],
+        },
+    }
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(report, indent=2) + "\n")
+        typer.echo(f"report={output}")
+    typer.echo(json.dumps(report, indent=2))
+
+
+def _latency_summary(samples: list[dict[str, object]], key: str) -> dict[str, float] | None:
+    values = [float(sample[key]) for sample in samples if sample.get(key) is not None]
+    if not values:
+        return None
+    return {
+        "min": round(min(values), 3),
+        "median": round(median(values), 3),
+        "p95": round(_percentile(values, 0.95), 3),
+        "max": round(max(values), 3),
+    }
+
+
+def _percentile(values: list[float], percentile: float) -> float:
+    ordered = sorted(values)
+    index = max(0, min(len(ordered) - 1, math.ceil(percentile * len(ordered)) - 1))
+    return ordered[index]
 
 
 def _parse_alphas(value: str) -> list[float]:

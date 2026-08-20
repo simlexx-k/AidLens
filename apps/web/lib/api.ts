@@ -54,11 +54,17 @@ export type EvidenceSearchResponse = {
   reranker_model: string | null;
   reranker_model_fingerprint: string | null;
   reranker_alpha: number | null;
+  reranker_backend: string | null;
+  reranker_batch_size: number | null;
+  reranker_device: string | null;
+  reranker_model_load_latency_ms: number | null;
   reranker_fallback_reason: string | null;
   ranking_pipeline: string[];
+  query_encoding_latency_ms: number | null;
   first_stage_latency_ms: number | null;
   reranker_latency_ms: number | null;
   total_search_latency_ms: number | null;
+  request_latency_ms: number | null;
   groups: EvidenceEvaluationGroup[];
   hits: EvidenceHit[];
 };

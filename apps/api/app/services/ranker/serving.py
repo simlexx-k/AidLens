@@ -3,6 +3,7 @@ import hashlib
 import math
 from functools import cached_property
 from pathlib import Path
+from time import perf_counter
 
 from app.schemas.evaluation import EvidenceSearchHit
 
@@ -10,21 +11,27 @@ FROZEN_AIDRANKER_ALPHA = 0.50
 
 
 class AidRankerService:
-    """Lazy CrossEncoder serving adapter for the validated AidRanker pipeline."""
+    """CrossEncoder serving adapter for the validated AidRanker pipeline."""
 
     name = "aidranker-v1"
     alpha = FROZEN_AIDRANKER_ALPHA
+    backend = "torch"
 
     def __init__(
         self,
         model_name_or_path: str,
         *,
         candidate_k: int = 40,
+        batch_size: int = 32,
+        device: str = "auto",
         fail_open: bool = True,
     ) -> None:
         self.model_name_or_path = model_name_or_path
         self.candidate_k = candidate_k
+        self.batch_size = batch_size
+        self.device = device
         self.fail_open = fail_open
+        self._model_load_latency_ms: float | None = None
 
     @cached_property
     def _model(self):
@@ -36,7 +43,35 @@ class AidRankerService:
                 "Install with `pip install -e '.[ml]'` or rebuild with "
                 "AIDLENS_API_EXTRAS=ml."
             ) from exc
-        return CrossEncoder(self.model_name_or_path)
+
+        started = perf_counter()
+        model = CrossEncoder(
+            self.model_name_or_path,
+            device=None if self.device == "auto" else self.device,
+            backend=self.backend,
+        )
+        self._model_load_latency_ms = round((perf_counter() - started) * 1000.0, 3)
+        return model
+
+    @property
+    def model_loaded(self) -> bool:
+        return "_model" in self.__dict__
+
+    @property
+    def model_load_latency_ms(self) -> float | None:
+        return self._model_load_latency_ms
+
+    async def warmup(self) -> None:
+        """Load model weights and execute one tiny prediction before serving traffic."""
+
+        await asyncio.to_thread(self._warmup_sync)
+
+    def _warmup_sync(self) -> None:
+        self._model.predict(
+            [("AidLens warmup", "Development evidence reranking warmup passage.")],
+            batch_size=1,
+            show_progress_bar=False,
+        )
 
     @cached_property
     def artifact_fingerprint(self) -> str | None:
@@ -74,7 +109,7 @@ class AidRankerService:
         pairs = [(query, hit.text) for hit in hits]
         predictions = self._model.predict(
             pairs,
-            batch_size=32,
+            batch_size=self.batch_size,
             show_progress_bar=False,
         )
         reranker_scores = [float(score) for score in predictions]
