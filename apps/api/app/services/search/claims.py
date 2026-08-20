@@ -77,6 +77,17 @@ _EFFECT_PATTERNS = (
     re.compile(r"\b(?:achiev|improv|enhanc|strengthen|sustain)\w*\b", re.IGNORECASE),
 )
 _CONTRAST_PATTERN = re.compile(r"\b(?:but|however|although|yet|while)\b", re.IGNORECASE)
+_PROSPECTIVE_EFFECT_PATTERN = re.compile(
+    (
+        r"\b(?:could|may|might|should|would|can|likely to|potentially)\b"
+        r"[^,.;:!?]{0,80}\b(?:improve|increase|reduce|strengthen|enhance|benefit|"
+        r"lead|result|contribute|achieve|sustain)\w*\b"
+    ),
+    re.IGNORECASE,
+)
+_INDICATOR_LABEL_PATTERN = re.compile(
+    r"\b(?:OUTCOME|OUTPUT|PERFORMANCE)\s+INDICATORS?\b"
+)
 _CONDITION_PATTERN = re.compile(
     r"\b(?:only when|only where|provided that|when|where|if|among)\b[^,.;:!?]{3,140}",
     re.IGNORECASE,
@@ -93,9 +104,10 @@ def extract_grounded_claims(
 
     The extractor never rewrites the source sentence. Stance is assigned only from
     explicit lexical signals inside that sentence; section labels and metadata do
-    not determine stance. When no effect signal is present, one source sentence is
-    returned as `not_an_effect_claim` so absence is visible rather than silently
-    omitted.
+    not determine stance. Questions, prospective/modal statements and indicator
+    labels abstain rather than being promoted to observed effect claims. When no
+    effect signal is present, one source sentence is returned as
+    `not_an_effect_claim` so absence is visible rather than silently omitted.
     """
 
     claims: list[GroundedEvidenceClaim] = []
@@ -143,10 +155,7 @@ def _assess_hit(
     if not sentences:
         return []
 
-    assessed = [
-        (*sentence, *_classify_sentence(sentence[0]))
-        for sentence in sentences
-    ]
+    assessed = [(*sentence, *_classify_sentence(sentence[0])) for sentence in sentences]
     effect_claims = [item for item in assessed if item[3] != "not_an_effect_claim"]
     selected = effect_claims[:max_claims]
     if not selected:
@@ -191,9 +200,10 @@ def _sentence_spans(text: str) -> list[tuple[str, int, int]]:
     return spans
 
 
-def _classify_sentence(
-    statement: str,
-) -> tuple[ClaimStance, float, list[str]]:
+def _classify_sentence(statement: str) -> tuple[ClaimStance, float, list[str]]:
+    if _is_non_assertive(statement):
+        return "not_an_effect_claim", 0.98, []
+
     mixed = _matches(statement, _MIXED_PATTERNS)
     negative = _matches(statement, _NEGATIVE_PATTERNS)
     positive = _matches(statement, _POSITIVE_PATTERNS)
@@ -211,6 +221,15 @@ def _classify_sentence(
     return "not_an_effect_claim", 0.98, []
 
 
+def _is_non_assertive(statement: str) -> bool:
+    stripped = statement.rstrip()
+    if stripped.endswith("?"):
+        return True
+    if _PROSPECTIVE_EFFECT_PATTERN.search(statement):
+        return True
+    return bool(_INDICATOR_LABEL_PATTERN.search(statement))
+
+
 def _matches(statement: str, patterns: tuple[re.Pattern[str], ...]) -> list[str]:
     matches: list[str] = []
     for pattern in patterns:
@@ -222,8 +241,7 @@ def _matches(statement: str, patterns: tuple[re.Pattern[str], ...]) -> list[str]
 
 def _extract_conditions(statement: str) -> list[str]:
     return _unique(
-        match.group(0).strip()
-        for match in _CONDITION_PATTERN.finditer(statement)
+        match.group(0).strip() for match in _CONDITION_PATTERN.finditer(statement)
     )[:3]
 
 
