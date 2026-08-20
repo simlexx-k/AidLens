@@ -112,12 +112,20 @@ def test_synthesis_counts_roles_and_recurring_facets_across_evaluations() -> Non
     assert synthesis.evaluation_count == 3
     assert synthesis.passage_count == 4
     assert synthesis.outcome_evaluation_count == 2
-    assert [(item.role, item.evaluation_count, item.passage_count) for item in synthesis.role_coverage] == [
+    role_summary = [
+        (item.role, item.evaluation_count, item.passage_count)
+        for item in synthesis.role_coverage
+    ]
+    assert role_summary == [
         ("outcome", 2, 2),
         ("recommendation", 1, 1),
         ("method", 1, 1),
     ]
-    assert [(facet.kind, facet.value, facet.evaluation_count) for facet in synthesis.recurring_facets] == [
+    facet_summary = [
+        (facet.kind, facet.value, facet.evaluation_count)
+        for facet in synthesis.recurring_facets
+    ]
+    assert facet_summary == [
         ("location", "Kenya", 2),
         ("institution", "USAID", 2),
         ("keyword", "Education", 2),
