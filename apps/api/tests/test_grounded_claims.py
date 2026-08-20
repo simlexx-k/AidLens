@@ -108,6 +108,23 @@ def test_outcome_indicator_label_does_not_become_supporting_finding() -> None:
     assert claim.stance_basis == []
 
 
+def test_generic_causal_verb_without_directional_outcome_does_not_support() -> None:
+    _, claim = _claim(
+        "Context specific techniques had the best implementation results and local funding "
+        "contributed to implementation quality."
+    )
+
+    assert claim.stance == "not_an_effect_claim"
+    assert claim.stance_basis == []
+
+
+def test_causal_phrase_with_explicit_positive_outcome_can_support() -> None:
+    _, claim = _claim("Local partner coaching contributed to improved attendance.")
+
+    assert claim.stance == "supports"
+    assert "improved" in [item.casefold() for item in claim.stance_basis]
+
+
 def test_section_role_does_not_create_effect_stance() -> None:
     _, claim = _claim("The evaluation described survey procedures and sampling methods.")
 
