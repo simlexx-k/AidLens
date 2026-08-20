@@ -11,6 +11,12 @@ from app.schemas.evaluation import (
     EvidenceSearchHit,
     TransferabilityPair,
 )
+from app.services.search.claims import (
+    CLAIM_EXTRACTOR,
+    effect_claim_evaluation_count,
+    extract_grounded_claims,
+    stance_coverage,
+)
 
 _ROLE_BY_SECTION: dict[str, EvidenceRole] = {
     "findings": "outcome",
@@ -54,8 +60,12 @@ _SYNTHESIS_CAVEATS = [
         "intervention will transfer."
     ),
     (
-        "AidLens does not infer supporting or contradictory effect stance in V1.2; "
-        "inspect source passages before drawing effect conclusions."
+        "V1.3 stance labels are conservative explicit-text signals, not adjudicated "
+        "causal conclusions; inspect each cited source sentence before use."
+    ),
+    (
+        "The insufficient and not_an_effect_claim states are intentional abstentions "
+        "when the returned text does not support a stronger stance."
     ),
 ]
 
@@ -115,11 +125,12 @@ def synthesize_evidence_groups(
 ) -> CrossEvaluationSynthesis:
     """Build deterministic cross-evaluation signals from final result groups.
 
-    V1.2 deliberately does not generate effect claims or infer positive/negative
-    stance. It summarizes evidence-role coverage, recurring structured metadata,
-    and pairwise context overlap so users can inspect the cited passages themselves.
+    V1.3 keeps V1.2 metadata/context synthesis and adds source-span-grounded claim
+    assessments. Stance is inferred only from explicit lexical evidence inside the
+    returned sentence; section labels and metadata never determine stance.
     """
 
+    claims = extract_grounded_claims(groups)
     return CrossEvaluationSynthesis(
         evaluation_count=len(groups),
         passage_count=sum(len(group.hits) for group in groups),
@@ -127,6 +138,10 @@ def synthesize_evidence_groups(
         role_coverage=_role_coverage(groups),
         recurring_facets=_recurring_facets(groups),
         transferability_pairs=_transferability_pairs(groups),
+        claim_extractor=CLAIM_EXTRACTOR,
+        claims=claims,
+        stance_coverage=stance_coverage(claims),
+        effect_claim_evaluation_count=effect_claim_evaluation_count(claims),
         caveats=list(_SYNTHESIS_CAVEATS),
     )
 
