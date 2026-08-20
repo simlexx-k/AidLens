@@ -35,6 +35,8 @@ class RankingCandidate(BaseModel):
     score: float
     lexical_score: float | None = None
     semantic_score: float | None = None
+    retrieval_modes: list[str] = Field(default_factory=list)
+    mode_ranks: dict[str, int] = Field(default_factory=dict)
     relevance: int | None = Field(default=None, ge=0, le=3)
 
 
