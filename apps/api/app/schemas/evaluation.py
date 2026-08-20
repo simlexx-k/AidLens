@@ -5,6 +5,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 SearchMode = Literal["auto", "lexical", "semantic", "hybrid"]
 RerankMode = Literal["auto", "disabled", "aidranker"]
+EvidenceRole = Literal[
+    "outcome",
+    "recommendation",
+    "method",
+    "context",
+    "implementation",
+    "sustainability",
+    "supporting",
+]
 
 
 class EvaluationSummary(BaseModel):
@@ -45,8 +54,10 @@ class EvidenceSearchHit(BaseModel):
     chunk_id: uuid.UUID
     evaluation_id: str
     title: str
+    project_title: str | None = None
     publication_year: int | None = None
     section: str | None = None
+    evidence_role: EvidenceRole = "supporting"
     text: str
     score: float
     lexical_score: float | None = None
@@ -54,7 +65,26 @@ class EvidenceSearchHit(BaseModel):
     reranker_score: float | None = None
     fusion_score: float | None = None
     retrieval_sources: list[str] = Field(default_factory=list)
+    locations: list[str] = Field(default_factory=list)
+    institutions: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
     source_url: str
+
+
+class EvidenceEvaluationGroup(BaseModel):
+    evaluation_id: str
+    title: str
+    project_title: str | None = None
+    intervention: str
+    publication_year: int | None = None
+    locations: list[str] = Field(default_factory=list)
+    institutions: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    evidence_roles: list[EvidenceRole] = Field(default_factory=list)
+    outcome_evidence_count: int = 0
+    top_score: float
+    source_url: str
+    hits: list[EvidenceSearchHit]
 
 
 class EvidenceSearchResponse(BaseModel):
@@ -65,6 +95,12 @@ class EvidenceSearchResponse(BaseModel):
     reranker_applied: bool = False
     reranker: str | None = None
     reranker_model: str | None = None
+    reranker_model_fingerprint: str | None = None
     reranker_alpha: float | None = None
     reranker_fallback_reason: str | None = None
+    ranking_pipeline: list[str] = Field(default_factory=list)
+    first_stage_latency_ms: float | None = None
+    reranker_latency_ms: float | None = None
+    total_search_latency_ms: float | None = None
+    groups: list[EvidenceEvaluationGroup] = Field(default_factory=list)
     hits: list[EvidenceSearchHit]
