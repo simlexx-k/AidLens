@@ -1,9 +1,18 @@
+from datetime import UTC, datetime
+
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.evaluation import Evaluation, EvaluationChunk
-from app.schemas.analytics import CorpusStats, LabelCount, QualityFlag
+from app.schemas.analytics import (
+    CorpusAudit,
+    CorpusAuditEvaluation,
+    CorpusStats,
+    DuplicateTitleGroup,
+    LabelCount,
+    QualityFlag,
+)
 from app.services.ingestion.chunker import CHUNKER_VERSION
 
 
@@ -32,6 +41,12 @@ async def corpus_stats(session: AsyncSession) -> CorpusStats:
     missing_year = await _scalar(
         session,
         select(func.count(Evaluation.id)).where(Evaluation.publication_year.is_(None)),
+    )
+    future_year = await _scalar(
+        session,
+        select(func.count(Evaluation.id)).where(
+            Evaluation.publication_year > datetime.now(UTC).year
+        ),
     )
     missing_abstract = await _scalar(
         session,
@@ -99,6 +114,13 @@ async def corpus_stats(session: AsyncSession) -> CorpusStats:
                 description="Evaluations without a parsed publication year.",
             ),
             QualityFlag(
+                code="future_publication_year",
+                count=future_year,
+                description=(
+                    "Evaluations with a publication year later than the current year."
+                ),
+            ),
+            QualityFlag(
                 code="missing_abstract",
                 count=missing_abstract,
                 description="Evaluations without an abstract in source metadata.",
@@ -127,6 +149,75 @@ async def corpus_stats(session: AsyncSession) -> CorpusStats:
                 count=duplicate_title_groups,
                 description="Distinct title groups that occur more than once.",
             ),
+        ],
+    )
+
+
+async def corpus_audit(session: AsyncSession) -> CorpusAudit:
+    """Return record-level details for corpus anomalies that need human review."""
+
+    current_year = datetime.now(UTC).year
+    future_rows = (
+        await session.execute(
+            select(
+                Evaluation.external_id,
+                Evaluation.title,
+                Evaluation.publication_year,
+                Evaluation.source_url,
+            )
+            .where(Evaluation.publication_year > current_year)
+            .order_by(Evaluation.publication_year.desc(), Evaluation.external_id)
+        )
+    ).all()
+    missing_text_rows = (
+        await session.execute(
+            select(
+                Evaluation.external_id,
+                Evaluation.title,
+                Evaluation.publication_year,
+                Evaluation.source_url,
+            )
+            .where(Evaluation.text_url.is_(None))
+            .order_by(Evaluation.external_id)
+        )
+    ).all()
+    duplicate_rows = (
+        await session.execute(
+            select(
+                Evaluation.title,
+                func.array_agg(Evaluation.external_id).label("evaluation_ids"),
+            )
+            .group_by(Evaluation.title)
+            .having(func.count(Evaluation.id) > 1)
+            .order_by(Evaluation.title)
+        )
+    ).all()
+
+    return CorpusAudit(
+        future_publication_years=[
+            CorpusAuditEvaluation(
+                external_id=str(external_id),
+                title=str(title),
+                publication_year=publication_year,
+                source_url=str(source_url),
+            )
+            for external_id, title, publication_year, source_url in future_rows
+        ],
+        missing_text_sources=[
+            CorpusAuditEvaluation(
+                external_id=str(external_id),
+                title=str(title),
+                publication_year=publication_year,
+                source_url=str(source_url),
+            )
+            for external_id, title, publication_year, source_url in missing_text_rows
+        ],
+        duplicate_titles=[
+            DuplicateTitleGroup(
+                title=str(title),
+                evaluation_ids=sorted(str(item) for item in evaluation_ids),
+            )
+            for title, evaluation_ids in duplicate_rows
         ],
     )
 

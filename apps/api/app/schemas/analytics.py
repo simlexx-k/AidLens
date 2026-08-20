@@ -25,3 +25,21 @@ class CorpusStats(BaseModel):
     top_keywords: list[LabelCount] = Field(default_factory=list)
     top_institutions: list[LabelCount] = Field(default_factory=list)
     quality_flags: list[QualityFlag] = Field(default_factory=list)
+
+
+class CorpusAuditEvaluation(BaseModel):
+    external_id: str
+    title: str
+    publication_year: int | None = None
+    source_url: str
+
+
+class DuplicateTitleGroup(BaseModel):
+    title: str
+    evaluation_ids: list[str]
+
+
+class CorpusAudit(BaseModel):
+    future_publication_years: list[CorpusAuditEvaluation] = Field(default_factory=list)
+    missing_text_sources: list[CorpusAuditEvaluation] = Field(default_factory=list)
+    duplicate_titles: list[DuplicateTitleGroup] = Field(default_factory=list)

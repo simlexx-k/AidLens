@@ -1,6 +1,7 @@
 import asyncio
 import re
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from urllib.parse import urljoin
 
 import httpx
@@ -12,6 +13,7 @@ from app.core.config import Settings
 
 EVALUATION_PATH_RE = re.compile(r"^/evaluations/([A-Za-z0-9_-]+)$")
 YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
+TITLE_YEAR_RE = re.compile(r"\((19\d{2}|20\d{2})\)\s*$")
 SIZE_RE = re.compile(r"([\d,.]+)\s*(KB|MB)", re.IGNORECASE)
 INSTITUTION_BOUNDARY_RE = re.compile(
     r"\s+(?=\d{1,6}\s+(?:USAID\.|U\.S\. Agency for International Development))",
@@ -96,7 +98,7 @@ class AidDataArchiveClient:
 
         metadata = self._metadata(soup)
         context = " ".join(str(item) for item in heading.find_all_next(string=True)[:30])
-        year_match = YEAR_RE.search(context)
+        publication_year = self._parse_publication_year(title, context)
 
         links = [a for a in soup.find_all("a", href=True) if isinstance(a, Tag)]
         pdf_url = self._asset_url(links, ".pdf")
@@ -119,7 +121,7 @@ class AidDataArchiveClient:
         return ArchiveEvaluation(
             external_id=external_id,
             title=title,
-            publication_year=int(year_match.group(1)) if year_match else None,
+            publication_year=publication_year,
             language=self._infer_language(context),
             project_title=self._extract_project_title(context),
             abstract=abstract,
@@ -227,6 +229,28 @@ class AidDataArchiveClient:
             return None
         amount = float(match.group(1).replace(",", ""))
         return round(amount * 1024) if match.group(2).upper() == "MB" else round(amount)
+
+    @staticmethod
+    def _parse_publication_year(
+        title: str,
+        context: str,
+        *,
+        current_year: int | None = None,
+    ) -> int | None:
+        """Prefer an explicit trailing title year and ignore impossible future years."""
+
+        ceiling = current_year or datetime.now(UTC).year
+        title_match = TITLE_YEAR_RE.search(title)
+        if title_match:
+            year = int(title_match.group(1))
+            if year <= ceiling:
+                return year
+
+        for match in YEAR_RE.finditer(context):
+            year = int(match.group(1))
+            if year <= ceiling:
+                return year
+        return None
 
     @staticmethod
     def _infer_language(context: str) -> str | None:

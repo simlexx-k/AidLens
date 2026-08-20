@@ -56,6 +56,10 @@ class ArchiveIngestor:
             "failed": failed,
         }
 
+    async def ingest_evaluation(self, external_id: str) -> str:
+        """Refresh one evaluation by stable AidData external ID."""
+        return await self._ingest_one(external_id)
+
     async def _existing_ids(self, ids: list[str]) -> set[str]:
         async with self.session_factory() as session:
             rows = await session.scalars(

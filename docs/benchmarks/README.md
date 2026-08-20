@@ -32,70 +32,127 @@ Relevance is graded:
 - `3`: directly answers the evidence question
 - `2`: clearly relevant supporting evidence
 - `1`: marginally relevant/contextual
+- `0`: irrelevant; preserve as a hard negative when it was highly ranked
 
 Only human-reviewed judgments should be treated as benchmark ground truth.
 Retrieved candidates are not automatically positive examples.
 
-## 1. Generate candidate pools
+## 1. Scale the corpus carefully
 
-Start with `apps/api/benchmarks/queries.example.jsonl`, then run:
+Use resumable ingestion for new archive pages:
+
+```bash
+docker compose run --rm api \
+  python -m app.cli ingest --pages 10 --start-page 2 --skip-existing
+```
+
+Before embedding a newly expanded corpus, inspect both aggregate quality and
+record-level anomalies:
+
+```bash
+docker compose run --rm api python -m app.cli corpus-report
+docker compose run --rm api python -m app.cli corpus-audit
+```
+
+The audit names future publication years, metadata-only records without text,
+and duplicate-title groups. Publication-year parsing prefers a trailing title
+year when available and ignores future year-like program horizons such as
+"Vision 2050".
+
+Refresh a single problematic record without re-fetching an entire page range:
+
+```bash
+docker compose run --rm api \
+  python -m app.cli refresh-evaluation AIDDATA_EXTERNAL_ID
+```
+
+Refreshing a text-backed evaluation recreates its chunks and therefore removes
+that evaluation's old embeddings. Re-embed missing chunks afterward.
+
+Live V0.6 scale validation reached 110 evaluations and 18,750 v2 chunks. The
+initial audit identified `PA00ZSBS` as incorrectly parsed with publication year
+2050 from its Mongolia Vision 2050 title. A targeted refresh corrected the
+corpus maximum publication year to 2024 and cleared the future-year quality
+flag. `PA0213MZ` remains a metadata-only Ghana T2E+ record because the AidData
+entry has no plaintext source URL. Two duplicate-title groups remain retained;
+equal titles with distinct archive IDs are not treated as sufficient evidence
+for deletion without content-level confirmation.
+
+## 2. Generate the V0.6 candidate pool
+
+V0.6 includes `apps/api/benchmarks/queries.v1.jsonl`: 30 questions balanced
+across six evidence intents:
+
+- intervention outcomes
+- sustainability risks
+- recommendations
+- evaluation methods
+- implementation factors
+- transferability context
+
+Generate a diversified human-review pool:
 
 ```bash
 docker compose run --rm api \
   python -m app.cli export-ranking-candidates \
-  benchmarks/queries.example.jsonl \
-  --output benchmarks/candidates.local.jsonl \
+  benchmarks/queries.v1.jsonl \
+  --output benchmarks/candidates-v1.local.jsonl \
   --mode hybrid \
   --top-k 20 \
   --max-per-evaluation 3
 ```
 
-The output persists on the host at
-`apps/api/benchmarks/candidates.local.jsonl`.
+Candidate export oversamples production retrieval and caps the annotation pool
+at three passages per evaluation. Each candidate retains its original
+`retrieval_rank`, query family, evaluation ID, section, passage text, lexical
+score, semantic score, fused score, and a nullable `relevance` field.
 
-Candidate export intentionally oversamples the production retrieval result and
-then caps the annotation pool at three passages per evaluation by default. This
-prevents one long or strongly matched report from crowding the entire human
-labeling pool. It does **not** change production search ranking or benchmark
-ranking.
+## 3. Label every candidate 0-3
 
-Each candidate includes both:
+Review every candidate and replace `relevance: null` with a value from 0 to 3.
+V0.6 compilation is intentionally strict: a partially labeled query is rejected,
+and a query with no positive evidence is not silently admitted to the benchmark.
 
-- `rank`: its position in the diversified annotation pool
-- `retrieval_rank`: its original position in the unmodified production result
+Once the pool is fully reviewed, compile both evaluation truth and future
+AidRanker supervision from the same labels:
 
-It also includes the evaluation ID, chunk ID, section, passage text, lexical
-score, semantic score, and fused score. Review these passages and assign
-relevance labels manually.
-
-## 2. Build a judgment dataset
-
-Copy `apps/api/benchmarks/judgments.template.jsonl` to a local judgment file and
-replace the placeholder evaluation ID with human-reviewed evidence targets.
-Create one JSON object per query:
-
-```json
-{"query_id":"q001","query":"What interventions improved household resilience to food insecurity?","judgments":[{"evaluation_id":"REAL_AIDDATA_ID","section":"findings","relevance":3}]}
+```bash
+docker compose run --rm api \
+  python -m app.cli compile-labels \
+  benchmarks/candidates-v1.local.jsonl \
+  --judgments-output benchmarks/judgments-v1.local.jsonl \
+  --ranker-output benchmarks/ranker-v1.local.jsonl
 ```
 
-Keep at least one relevant judgment per query. Add multiple judgments when more
-than one evaluation or section answers the question. Add `anchor_text` when a
-section-level label would mark unrelated chunks as relevant.
+Positive passages become anchor-aware benchmark judgments. Relevance-0 passages
+remain in the ranker dataset as hard negatives.
 
-## 3. Compare retrieval modes
+## 4. Compare retrieval modes
 
-Raw production ranking:
+Raw ranking:
 
 ```bash
 docker compose run --rm api \
   python -m app.cli benchmark \
-  benchmarks/judgments.local.jsonl \
+  benchmarks/judgments-v1.local.jsonl \
   --modes lexical,semantic,hybrid \
   --top-k 10 \
-  --output benchmarks/report.local.json
+  --output benchmarks/report-v1-raw.local.json
 ```
 
-The report contains per-query and mean:
+Product-facing diversified ranking:
+
+```bash
+docker compose run --rm api \
+  python -m app.cli benchmark \
+  benchmarks/judgments-v1.local.jsonl \
+  --modes lexical,semantic,hybrid \
+  --top-k 10 \
+  --max-per-evaluation 3 \
+  --output benchmarks/report-v1-diverse3.local.json
+```
+
+Reports contain overall and per-query-family:
 
 - Recall@K
 - Mean Reciprocal Rank (MRR)
@@ -111,53 +168,17 @@ The first live four-query baseline with `BAAI/bge-base-en-v1.5` was:
 | Semantic | 0.750 | 0.791667 | 0.615354 |
 | Hybrid | 0.791667 | 0.875 | 0.631609 |
 
-This establishes hybrid as the current baseline while also showing that semantic
-retrieval is responsible for most of the improvement over lexical search.
+With a three-passage-per-evaluation cap, the four-query hybrid smoke test
+improved to Recall@10 `0.916667`, MRR `0.875`, and nDCG@10 `0.682006`, while
+mean unique evaluations rose from `3.25` to `4.5` and duplicate share fell from
+`0.675` to `0.475`.
 
-## 4. Run a diversity experiment
+V0.6 deepens the retrieval pool before applying this cap so heavily concentrated
+queries are less likely to return fewer than the requested `top_k`.
 
-V0.5 can cap repeated passages from one evaluation without changing the default
-search behavior. For example, compare the same benchmark with at most three
-passages from one evaluation:
+## 5. Prepare AidRanker only after benchmark expansion
 
-```bash
-docker compose run --rm api \
-  python -m app.cli benchmark \
-  benchmarks/judgments.local.jsonl \
-  --modes lexical,semantic,hybrid \
-  --top-k 10 \
-  --max-per-evaluation 3 \
-  --output benchmarks/report-diverse.local.json
-```
-
-Compare relevance metrics together with `mean_unique_evaluations_at_k` and
-`mean_duplicate_share_at_k`. Do not adopt a diversity cap as the default solely
-because it increases variety; it should preserve or improve relevance quality.
-
-The web search UI exposes the same optional diversity control for manual review.
-
-## 5. Prepare AidRanker data
-
-The candidate export is the starting pool for cross-encoder/reranker training.
-After human labeling, convert each query-candidate pair into a supervised record
-with its graded relevance. Retain hard negatives from high-ranked but irrelevant
-lexical and semantic candidates; these are especially valuable for reranker
-training.
-
-Do not tune fusion weights or train AidRanker against the same queries used for
-final evaluation. The four-query benchmark is a smoke-test baseline, not a
-training set. Expand it and split judgments into development and held-out test
-sets before supervised ranking work.
-
-## Scaling ingestion
-
-When moving through new archive pages, avoid re-fetching records already in the
-local corpus:
-
-```bash
-docker compose run --rm api \
-  python -m app.cli ingest --pages 10 --start-page 2 --skip-existing
-```
-
-Omit `--skip-existing` when an existing evaluation intentionally needs metadata
-or chunker refresh.
+The compiled ranker file is the starting point for a cross-encoder/reranker. Do
+not train AidRanker on the original four-query smoke test. Expand human judgments,
+split queries into development and held-out test sets, and retain high-ranked
+relevance-0 lexical/semantic/hybrid candidates as hard negatives.

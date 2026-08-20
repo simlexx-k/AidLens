@@ -13,6 +13,7 @@ class RelevanceJudgment(BaseModel):
 class BenchmarkQuery(BaseModel):
     query_id: str = Field(min_length=1)
     query: str = Field(min_length=2, max_length=500)
+    family: str = Field(default="general", min_length=2, max_length=64)
     judgments: list[RelevanceJudgment] = Field(min_length=1)
     notes: str | None = None
 
@@ -20,6 +21,7 @@ class BenchmarkQuery(BaseModel):
 class CandidateQuery(BaseModel):
     query_id: str = Field(min_length=1)
     query: str = Field(min_length=2, max_length=500)
+    family: str = Field(default="general", min_length=2, max_length=64)
 
 
 class RankingCandidate(BaseModel):
@@ -39,8 +41,25 @@ class RankingCandidate(BaseModel):
 class RankingCandidateSet(BaseModel):
     query_id: str
     query: str
+    family: str = "general"
     mode: str
     candidates: list[RankingCandidate]
+
+
+class RankerTrainingRecord(BaseModel):
+    query_id: str
+    family: str
+    query: str
+    chunk_id: uuid.UUID
+    evaluation_id: str
+    title: str
+    section: str | None = None
+    text: str
+    relevance: int = Field(ge=0, le=3)
+    retrieval_rank: int
+    score: float
+    lexical_score: float | None = None
+    semantic_score: float | None = None
 
 
 class RetrievalMetrics(BaseModel):
@@ -56,6 +75,7 @@ class RetrievalMetrics(BaseModel):
 class BenchmarkQueryResult(BaseModel):
     query_id: str
     query: str
+    family: str = "general"
     mode: str
     metrics: RetrievalMetrics
     top_evaluation_ids: list[str]
@@ -72,10 +92,15 @@ class BenchmarkModeSummary(BaseModel):
     mean_duplicate_share_at_k: float
 
 
+class BenchmarkFamilySummary(BenchmarkModeSummary):
+    family: str
+
+
 class BenchmarkReport(BaseModel):
     dataset: str
     top_k: int
     embedding_model: str | None = None
     max_per_evaluation: int | None = None
     modes: list[BenchmarkModeSummary]
+    families: list[BenchmarkFamilySummary] = Field(default_factory=list)
     queries: list[BenchmarkQueryResult]

@@ -74,6 +74,7 @@ async def generate_candidate_sets(
             RankingCandidateSet(
                 query_id=query.query_id,
                 query=query.query,
+                family=query.family,
                 mode=response.mode,
                 candidates=[
                     RankingCandidate(
@@ -117,6 +118,24 @@ def diversify_candidates(
         if len(selected) >= top_k:
             break
     return selected
+
+
+def load_candidate_sets(path: Path) -> list[RankingCandidateSet]:
+    items: list[RankingCandidateSet] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line_number, raw_line in enumerate(handle, start=1):
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                items.append(RankingCandidateSet.model_validate_json(line))
+            except Exception as exc:
+                raise ValueError(
+                    f"Invalid candidate-set JSONL at {path}:{line_number}: {exc}"
+                ) from exc
+    if not items:
+        raise ValueError(f"Candidate-set file {path} contains no queries.")
+    return items
 
 
 def write_candidate_sets(items: list[RankingCandidateSet], path: Path) -> None:
