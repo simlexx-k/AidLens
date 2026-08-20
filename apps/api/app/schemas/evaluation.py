@@ -15,6 +15,13 @@ EvidenceRole = Literal[
     "supporting",
 ]
 EvidenceFacetKind = Literal["location", "institution", "keyword"]
+ClaimStance = Literal[
+    "supports",
+    "mixed",
+    "contradicts",
+    "insufficient",
+    "not_an_effect_claim",
+]
 
 
 class EvaluationSummary(BaseModel):
@@ -111,6 +118,28 @@ class TransferabilityPair(BaseModel):
     shared_keywords: list[str] = Field(default_factory=list)
 
 
+class GroundedEvidenceClaim(BaseModel):
+    claim_id: str
+    evaluation_id: str
+    chunk_id: uuid.UUID
+    section: str | None = None
+    evidence_role: EvidenceRole
+    statement: str
+    source_span_start: int
+    source_span_end: int
+    stance: ClaimStance
+    confidence: float = Field(ge=0.0, le=1.0)
+    stance_basis: list[str] = Field(default_factory=list)
+    explicit_conditions: list[str] = Field(default_factory=list)
+    source_url: str
+
+
+class ClaimStanceCoverage(BaseModel):
+    stance: ClaimStance
+    evaluation_count: int
+    claim_count: int
+
+
 class CrossEvaluationSynthesis(BaseModel):
     evaluation_count: int
     passage_count: int
@@ -118,6 +147,10 @@ class CrossEvaluationSynthesis(BaseModel):
     role_coverage: list[EvidenceRoleCoverage] = Field(default_factory=list)
     recurring_facets: list[CrossEvaluationFacet] = Field(default_factory=list)
     transferability_pairs: list[TransferabilityPair] = Field(default_factory=list)
+    claim_extractor: str | None = None
+    claims: list[GroundedEvidenceClaim] = Field(default_factory=list)
+    stance_coverage: list[ClaimStanceCoverage] = Field(default_factory=list)
+    effect_claim_evaluation_count: int = 0
     caveats: list[str] = Field(default_factory=list)
 
 
