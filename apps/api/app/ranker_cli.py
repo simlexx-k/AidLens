@@ -15,6 +15,7 @@ from app.services.ranker.evaluation import (
     evaluate_aidranker_model,
     write_ranker_report,
 )
+from app.services.ranker.fixed_fusion import evaluate_aidranker_fixed_fusion_model
 from app.services.ranker.training import DEFAULT_RANKER_MODEL, train_aidranker
 
 cli = typer.Typer(no_args_is_help=True, help="Offline AidRanker V1 experiments.")
@@ -196,6 +197,60 @@ def sweep_fusion_command(
         batch_size=batch_size,
         alphas=_parse_alphas(alphas),
         diversity_tolerance=diversity_tolerance,
+    )
+    if output:
+        write_ranker_report(report, output)
+        typer.echo(f"report={output}")
+    typer.echo(json.dumps(report, indent=2))
+
+
+@cli.command("evaluate-fusion")
+def evaluate_fusion_command(
+    dataset: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Held-out test split JSONL for one frozen fusion alpha.",
+        ),
+    ],
+    model_path: Annotated[
+        str,
+        typer.Option("--model-path", help="Fine-tuned CrossEncoder directory."),
+    ],
+    alpha: Annotated[
+        float,
+        typer.Option(
+            min=0.0,
+            max=1.0,
+            help="Frozen global AidRanker fusion weight selected on dev.",
+        ),
+    ],
+    candidate_mode: Annotated[
+        str,
+        typer.Option(
+            "--candidate-mode",
+            help="First-stage candidates to fuse with AidRanker scores.",
+        ),
+    ] = "semantic",
+    top_k: Annotated[int, typer.Option(min=1, max=50)] = 10,
+    batch_size: Annotated[int, typer.Option(min=1, max=256)] = 32,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False),
+    ] = None,
+) -> None:
+    """Evaluate one already-frozen fusion alpha without test-time selection."""
+
+    records = load_ranker_records(dataset)
+    report = evaluate_aidranker_fixed_fusion_model(
+        records,
+        model_path,
+        alpha=alpha,
+        candidate_mode=candidate_mode,
+        top_k=top_k,
+        batch_size=batch_size,
     )
     if output:
         write_ranker_report(report, output)
