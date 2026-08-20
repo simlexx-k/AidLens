@@ -77,6 +77,8 @@ def compile_labeled_candidates(
                 score=candidate.score,
                 lexical_score=candidate.lexical_score,
                 semantic_score=candidate.semantic_score,
+                retrieval_modes=candidate.retrieval_modes,
+                mode_ranks=candidate.mode_ranks,
             )
             for candidate in item.candidates
             if candidate.relevance is not None
