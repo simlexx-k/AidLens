@@ -29,7 +29,9 @@ def compile_labeled_candidates(
             suffix = "..." if len(unlabeled) > 10 else ""
             raise ValueError(
                 f"Query {item.query_id} has unlabeled candidates at ranks {ranks}{suffix}. "
-                "Assign every candidate a relevance value from 0 to 3 before compiling."
+                "Assign every candidate a relevance value from 0 to 3 before compiling. "
+                "For pooled benchmarks, make sure you are compiling the reviewed "
+                "*-pooled-labeled.local.jsonl file rather than the raw pooled export."
             )
 
         positives = [
@@ -77,6 +79,8 @@ def compile_labeled_candidates(
                 score=candidate.score,
                 lexical_score=candidate.lexical_score,
                 semantic_score=candidate.semantic_score,
+                retrieval_modes=candidate.retrieval_modes,
+                mode_ranks=candidate.mode_ranks,
             )
             for candidate in item.candidates
             if candidate.relevance is not None

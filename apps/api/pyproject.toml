@@ -24,7 +24,7 @@ dependencies = [
 [project.optional-dependencies]
 ml = [
   "scikit-learn>=1.5,<2.0",
-  "sentence-transformers>=3.0,<7.0",
+  "sentence-transformers[train]>=3.0,<7.0",
   "torch>=2.4,<4.0",
   "transformers>=4.44,<6.0",
 ]
