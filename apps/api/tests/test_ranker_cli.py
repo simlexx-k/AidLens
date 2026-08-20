@@ -17,6 +17,7 @@ def test_ranker_cli_exposes_split_train_evaluate_and_fusion_commands() -> None:
     assert "evaluate" in output
     assert "sweep-fusion" in output
     assert "evaluate-fusion" in output
+    assert "benchmark-serving" in output
 
 
 def test_ranker_split_help_exposes_seed_and_output() -> None:
@@ -47,3 +48,14 @@ def test_ranker_fixed_fusion_command_requires_frozen_alpha() -> None:
     assert "candidate_mode" in parameter_names
     assert "alphas" not in parameter_names
     assert "diversity_tolerance" not in parameter_names
+
+
+def test_serving_benchmark_exposes_repeatable_latency_controls() -> None:
+    root = get_command(cli)
+    command = root.commands["benchmark-serving"]
+    parameter_names = {parameter.name for parameter in command.params}
+
+    assert "api_url" in parameter_names
+    assert "query" in parameter_names
+    assert "repeats" in parameter_names
+    assert "output" in parameter_names
