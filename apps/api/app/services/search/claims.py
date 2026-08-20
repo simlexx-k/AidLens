@@ -76,6 +76,7 @@ _EFFECT_PATTERNS = (
     re.compile(r"\b(?:improvement|reduction|increase|decrease|change)s?\b", re.IGNORECASE),
     re.compile(r"\b(?:achiev|improv|enhanc|strengthen|sustain)\w*\b", re.IGNORECASE),
 )
+_CONTRAST_PATTERN = re.compile(r"\b(?:but|however|although|yet|while)\b", re.IGNORECASE)
 _CONDITION_PATTERN = re.compile(
     r"\b(?:only when|only where|provided that|when|where|if|among)\b[^,.;:!?]{3,140}",
     re.IGNORECASE,
@@ -197,8 +198,9 @@ def _classify_sentence(
     negative = _matches(statement, _NEGATIVE_PATTERNS)
     positive = _matches(statement, _POSITIVE_PATTERNS)
     effect = _matches(statement, _EFFECT_PATTERNS)
+    has_contrast = bool(_CONTRAST_PATTERN.search(statement))
 
-    if mixed or (positive and negative):
+    if mixed or (positive and negative and has_contrast):
         return "mixed", 0.88, _unique([*mixed, *positive, *negative])[:4]
     if negative:
         return "contradicts", 0.86, negative[:4]
