@@ -144,7 +144,9 @@ export function SearchExperience() {
                 ? ` · AidRanker α ${data.reranker_alpha.toFixed(2)}`
                 : ""}
               {data.reranker_fallback_reason ? " · semantic fallback" : ""}
-              {data.total_search_latency_ms !== null ? ` · ${Math.round(data.total_search_latency_ms)} ms` : ""}
+              {(data.request_latency_ms ?? data.total_search_latency_ms) !== null
+                ? ` · ${Math.round(data.request_latency_ms ?? data.total_search_latency_ms ?? 0)} ms`
+                : ""}
             </span>
           </div>
 
