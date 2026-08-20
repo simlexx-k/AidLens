@@ -81,6 +81,33 @@ def test_effect_language_without_direction_abstains_as_insufficient() -> None:
     assert claim.stance_basis == ["impact"]
 
 
+def test_question_with_positive_vocabulary_is_not_an_effect_claim() -> None:
+    _, claim = _claim(
+        "What factors contributed to the achievement of the outcomes you set at the start?"
+    )
+
+    assert claim.stance == "not_an_effect_claim"
+    assert claim.stance_basis == []
+
+
+def test_prospective_recommendation_does_not_become_supporting_finding() -> None:
+    _, claim = _claim(
+        "Recommendations focus on implementation changes that could improve performance."
+    )
+
+    assert claim.stance == "not_an_effect_claim"
+    assert claim.stance_basis == []
+
+
+def test_outcome_indicator_label_does_not_become_supporting_finding() -> None:
+    _, claim = _claim(
+        "OUTCOME INDICATOR IMPROVED SELF-SUFFICIENCY OF THE FAMILY increased food security."
+    )
+
+    assert claim.stance == "not_an_effect_claim"
+    assert claim.stance_basis == []
+
+
 def test_section_role_does_not_create_effect_stance() -> None:
     _, claim = _claim("The evaluation described survey procedures and sampling methods.")
 
