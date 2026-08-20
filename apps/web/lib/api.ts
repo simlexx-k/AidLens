@@ -1,9 +1,20 @@
+export type EvidenceRole =
+  | "outcome"
+  | "recommendation"
+  | "method"
+  | "context"
+  | "implementation"
+  | "sustainability"
+  | "supporting";
+
 export type EvidenceHit = {
   chunk_id: string;
   evaluation_id: string;
   title: string;
+  project_title: string | null;
   publication_year: number | null;
   section: string | null;
+  evidence_role: EvidenceRole;
   text: string;
   score: number;
   lexical_score: number | null;
@@ -11,7 +22,26 @@ export type EvidenceHit = {
   reranker_score: number | null;
   fusion_score: number | null;
   retrieval_sources: string[];
+  locations: string[];
+  institutions: string[];
+  keywords: string[];
   source_url: string;
+};
+
+export type EvidenceEvaluationGroup = {
+  evaluation_id: string;
+  title: string;
+  project_title: string | null;
+  intervention: string;
+  publication_year: number | null;
+  locations: string[];
+  institutions: string[];
+  keywords: string[];
+  evidence_roles: EvidenceRole[];
+  outcome_evidence_count: number;
+  top_score: number;
+  source_url: string;
+  hits: EvidenceHit[];
 };
 
 export type EvidenceSearchResponse = {
@@ -22,8 +52,14 @@ export type EvidenceSearchResponse = {
   reranker_applied: boolean;
   reranker: string | null;
   reranker_model: string | null;
+  reranker_model_fingerprint: string | null;
   reranker_alpha: number | null;
   reranker_fallback_reason: string | null;
+  ranking_pipeline: string[];
+  first_stage_latency_ms: number | null;
+  reranker_latency_ms: number | null;
+  total_search_latency_ms: number | null;
+  groups: EvidenceEvaluationGroup[];
   hits: EvidenceHit[];
 };
 
