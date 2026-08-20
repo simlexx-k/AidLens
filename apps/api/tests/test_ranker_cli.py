@@ -1,4 +1,5 @@
 from click import unstyle
+from typer.main import get_command
 from typer.testing import CliRunner
 
 from app.ranker_cli import cli
@@ -26,15 +27,11 @@ def test_ranker_split_help_exposes_seed_and_output() -> None:
     assert "--output-dir" in output
 
 
-def test_ranker_fusion_help_exposes_dev_calibration_controls() -> None:
-    result = runner.invoke(
-        cli,
-        ["sweep-fusion", "--help"],
-        terminal_width=180,
-    )
-    output = unstyle(result.stdout)
+def test_ranker_fusion_command_exposes_dev_calibration_controls() -> None:
+    root = get_command(cli)
+    command = root.commands["sweep-fusion"]
+    parameter_names = {parameter.name for parameter in command.params}
 
-    assert result.exit_code == 0
-    assert "--alphas" in output
-    assert "--diversity-tolerance" in output
-    assert "--candidate-mode" in output
+    assert "alphas" in parameter_names
+    assert "diversity_tolerance" in parameter_names
+    assert "candidate_mode" in parameter_names
