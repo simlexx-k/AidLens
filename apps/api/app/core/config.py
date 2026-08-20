@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     aidranker_provider: Literal["disabled", "sentence-transformers"] = "disabled"
     aidranker_model: str = "models/aidranker-v1.local"
     aidranker_candidate_k: int = Field(default=40, ge=10, le=100)
+    aidranker_batch_size: int = Field(default=32, ge=1, le=256)
+    aidranker_device: Literal["auto", "cpu", "cuda", "mps"] = "auto"
+    aidranker_warmup: bool = True
     aidranker_fail_open: bool = True
 
 
