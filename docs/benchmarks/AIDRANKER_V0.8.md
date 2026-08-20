@@ -12,60 +12,26 @@ The fair pooled 30-query benchmark (`top_k=10`, `max_per_evaluation=3`) establis
 
 Hybrid remains a comparison arm because it occasionally improves first-hit ranking, but semantic has the best overall recall and nDCG.
 
-## AidRanker V1 scope
+## Experiment design
 
-1. Split ranker supervision by query, never by individual passage.
-2. Preserve all six evidence families in train/dev/test.
-3. Use 18 train, 6 dev, and 6 held-out test queries (3/1/1 per family).
-4. Train a local SentenceTransformers CrossEncoder; no paid API dependency.
-5. Treat relevance 0–3 as graded supervision, with relevance 0 retained as hard negatives.
-6. Calibrate model/fusion choices on dev only.
-7. Evaluate the frozen configuration once on held-out test queries.
-8. Do not integrate the reranker into production search until held-out ranking quality improves without losing strong-evidence recall.
+- query-grouped 18 train / 6 dev / 6 held-out test split
+- every evidence family contributes 3 train / 1 dev / 1 test query
+- relevance 0–3 is retained as graded supervision
+- relevance-0 passages remain hard negatives
+- default model: `cross-encoder/ms-marco-MiniLM-L6-v2`
+- one epoch is the initial AidRanker V1 training configuration
+- production serving remains unchanged during V0.8
 
 ## Leakage controls
 
-- Split unit is `query_id`.
-- A query may occur in exactly one split.
-- Split generation is deterministic from a supplied seed.
-- Family balance is checked and reported.
-- The held-out test set is not used for threshold, epoch, fusion-weight, or model selection.
-
-## Initial model
-
-Default model: `cross-encoder/ms-marco-MiniLM-L6-v2`.
-
-This is intentionally small enough for local experimentation while providing a strong pretrained passage-ranking initialization. V0.8 is an experiment and data pipeline first; production inference integration is deferred until benchmark validation.
+- split unit is `query_id`, never an individual passage
+- the held-out test set is not used for epoch, loss, learning-rate, model, or fusion-weight selection
+- dev uses one global fusion alpha only; no family-specific calibration
+- held-out test evaluation uses a fixed-alpha command that performs no sweep or model selection
 
 ## Recompile pooled ranker records
 
-V0.8 preserves `retrieval_modes` and `mode_ranks` in the ranker JSONL so reranking can be evaluated against the exact semantic first-stage candidate set.
-
-**Important:** compile from the fully reviewed pooled file, not the raw pooled export. The required input is `candidates-v2-pooled-labeled.local.jsonl`; every candidate must already have a `relevance` value from 0 to 3.
-
-Optional preflight check:
-
-```bash
-python3 - <<'PY'
-import json
-from pathlib import Path
-
-path = Path('apps/api/benchmarks/candidates-v2-pooled-labeled.local.jsonl')
-items = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
-records = [c for item in items for c in item['candidates']]
-unlabeled = [c for c in records if c.get('relevance') is None]
-print(f'queries={len(items)} records={len(records)} unlabeled={len(unlabeled)}')
-assert not unlabeled, 'Use the reviewed labeled pooled candidate file before compile-labels.'
-PY
-```
-
-Expected for V0.7 pooled labels:
-
-```text
-queries=30 records=638 unlabeled=0
-```
-
-Compile:
+Compile from the fully reviewed pooled candidate file:
 
 ```bash
 docker compose run --rm api \
@@ -85,17 +51,11 @@ docker compose run --rm api \
   --seed 42
 ```
 
-For the current 638-record dataset, seed 42 yields:
-
-- train: 18 queries / 406 records
-- dev: 6 queries / 113 records
-- test: 6 queries / 119 records
-
-Each of the six families contributes 3 train, 1 dev, and 1 test query.
+The 638-record dataset yields 18 train / 6 dev / 6 test queries.
 
 ## Train
 
-The ML-enabled API image is required. The `ml` extra uses `sentence-transformers[train]`, which installs the supported SentenceTransformers training stack including Hugging Face datasets/accelerate.
+The `ml` extra uses `sentence-transformers[train]` so CrossEncoder training dependencies such as Hugging Face datasets/accelerate are installed.
 
 ```bash
 docker compose run --rm api \
@@ -106,32 +66,31 @@ docker compose run --rm api \
   --batch-size 8
 ```
 
-The 0–3 relevance labels are scaled to 0–1 soft targets. One epoch is the initial default because CrossEncoders can overfit quickly on small datasets.
+## Initial dev result
 
-## Evaluate on dev first
+Pure AidRanker reranking versus semantic baseline on the six dev queries:
 
-```bash
-docker compose run --rm api \
-  python -m app.ranker_cli evaluate \
-  benchmarks/ranker-v2-split.local/dev.jsonl \
-  --model-path models/aidranker-v1.local \
-  --candidate-mode semantic \
-  --top-k 10 \
-  --output benchmarks/aidranker-v1-dev.local.json
-```
+- semantic: any-positive Recall@10 0.607664, MRR 0.916667, nDCG@10 0.613312
+- AidRanker-only: any-positive Recall@10 0.574627, MRR 1.000000, nDCG@10 0.693929
+- semantic candidate any-positive recall ceiling: 0.980392
 
-The evaluator reports both backward-compatible any-positive recall and stronger evidence-aware metrics:
+Pure reranking materially improves first-hit and graded ranking quality but reduces broad any-positive recall, motivating fusion calibration.
+
+## Evidence-aware metrics
+
+The V0.8 evaluator reports:
 
 - `recall_any_at_k`: relevance >= 1
 - `recall_supporting_at_k`: relevance >= 2
 - `recall_direct_at_k`: relevance = 3
 - `graded_recall_at_k`: fraction of total 0–3 relevance mass recovered in top K
-- MRR, nDCG@K, unique evaluations, duplicate share
-- any/supporting/direct/graded candidate-recall ceilings
+- MRR and nDCG@K
+- unique evaluations and duplicate share
+- tiered candidate-recall ceilings
 
-## Dev-only fusion calibration
+## Dev fusion calibration
 
-The initial dev run improved MRR/nDCG but reduced any-positive Recall@10. Before touching the held-out test set, sweep one global semantic/AidRanker weight on dev:
+The dev-only command is:
 
 ```bash
 docker compose run --rm api \
@@ -144,29 +103,53 @@ docker compose run --rm api \
   --output benchmarks/aidranker-v1-dev-fusion.local.json
 ```
 
-Scores are min-max normalized within each query before fusion. `alpha=0` is semantic-only and `alpha=1` is AidRanker-only. The selector maximizes dev nDCG while requiring:
+Semantic and AidRanker scores are min-max normalized within each query before fusion. `alpha=0` is semantic-only and `alpha=1` is AidRanker-only.
 
-- supporting-recall >= semantic baseline
-- direct-recall >= semantic baseline
-- MRR >= semantic baseline
-- mean duplicate share no more than 0.05 above semantic baseline
+Selection requires supporting recall >= baseline, direct recall >= baseline, MRR >= baseline, and mean duplicate share <= baseline + 0.05; among feasible weights, dev nDCG is maximized.
 
-This is one global alpha only. Do not fit family-specific weights on the six-query dev split.
+### Frozen V0.8 configuration
 
-## Held-out test
+The six-query dev calibration selected **alpha = 0.50**.
 
-Only after the model and fusion alpha are frozen should the held-out test be evaluated. Do not use test results to adjust epochs, learning rate, loss, or alpha.
+Compared with semantic-only on dev:
 
-The pure-reranker diagnostic remains:
+- any-positive Recall@10: 0.607664 -> 0.649876
+- supporting Recall@10: 0.637210 -> 0.681655
+- direct-answer Recall@10: 0.481902 -> 0.567761
+- graded Recall@10: 0.611341 -> 0.665029
+- MRR: 0.916667 -> 0.916667
+- nDCG@10: 0.613312 -> 0.676883
+- mean unique evaluations@10: 6.666667 -> 7.000000
+- mean duplicate share@10: 0.333333 -> 0.300000
+
+This configuration satisfies every dev selection constraint. Alpha 0.75 and 1.0 are rejected because they lose supporting-evidence recall relative to baseline.
+
+The configuration is now frozen as:
+
+```text
+candidate generator: semantic (BAAI/bge-base-en-v1.5)
+reranker: models/aidranker-v1.local
+fusion alpha: 0.50
+top_k: 10
+```
+
+## One-shot held-out evaluation
+
+Do not call `sweep-fusion` on test data. Use the fixed-alpha evaluator:
 
 ```bash
 docker compose run --rm api \
-  python -m app.ranker_cli evaluate \
+  python -m app.ranker_cli evaluate-fusion \
   benchmarks/ranker-v2-split.local/test.jsonl \
   --model-path models/aidranker-v1.local \
   --candidate-mode semantic \
+  --alpha 0.5 \
   --top-k 10 \
-  --output benchmarks/aidranker-v1-test.local.json
+  --output benchmarks/aidranker-v1-test-fusion.local.json
 ```
 
-A frozen fused test evaluation should use the alpha selected on dev; production integration remains deferred until that held-out result is reviewed.
+The command evaluates exactly one already-selected alpha and emits baseline versus fused metrics without any test-time selection object.
+
+## Production gate
+
+Do not integrate AidRanker into serving until the one-shot held-out test is reviewed. The held-out result is for final validation, not another tuning cycle.
