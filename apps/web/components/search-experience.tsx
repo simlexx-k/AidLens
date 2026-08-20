@@ -24,6 +24,7 @@ export function SearchExperience() {
   const initialQuery = params.get("q") ?? "";
   const [query, setQuery] = useState(initialQuery);
   const [mode, setMode] = useState<"auto" | "lexical" | "semantic" | "hybrid">("auto");
+  const [rerank, setRerank] = useState<"auto" | "disabled" | "aidranker">("auto");
   const [section, setSection] = useState("");
   const [yearFrom, setYearFrom] = useState("");
   const [yearTo, setYearTo] = useState("");
@@ -42,6 +43,7 @@ export function SearchExperience() {
         await searchEvidence({
           query: trimmed,
           mode,
+          rerank,
           section,
           publicationYearFrom: yearFrom ? Number(yearFrom) : undefined,
           publicationYearTo: yearTo ? Number(yearTo) : undefined,
@@ -71,9 +73,9 @@ export function SearchExperience() {
         <span className="eyebrow">Evidence retrieval</span>
         <h1>Compare evidence across evaluations, not just passages.</h1>
         <p>
-          Hybrid retrieval combines lexical and semantic signals. AidLens limits repeated
-          passages from one evaluation by default so stronger matches do not crowd out
-          potentially useful evidence from other reports.
+          AidLens uses semantic evidence retrieval and, when available, AidRanker to
+          prioritize stronger supporting and direct-answer passages before applying the
+          evidence-spread limit across reports.
         </p>
       </div>
       <form onSubmit={onSubmit}>
@@ -93,9 +95,20 @@ export function SearchExperience() {
               onChange={(event) => setMode(event.target.value as typeof mode)}
             >
               <option value="auto">Auto</option>
-              <option value="lexical">Lexical</option>
-              <option value="hybrid">Hybrid</option>
               <option value="semantic">Semantic</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="lexical">Lexical</option>
+            </select>
+          </label>
+          <label>
+            Ranking
+            <select
+              value={rerank}
+              onChange={(event) => setRerank(event.target.value as typeof rerank)}
+            >
+              <option value="auto">Best available</option>
+              <option value="disabled">First-stage only</option>
+              <option value="aidranker">Require AidRanker</option>
             </select>
           </label>
           <label>
@@ -146,7 +159,10 @@ export function SearchExperience() {
             <strong>{data.hits.length} evidence passages</strong>
             <span>
               {data.mode}
-              {data.embedding_model ? ` · ${data.embedding_model}` : ""}
+              {data.reranker_applied && data.reranker_alpha !== null
+                ? ` · AidRanker α ${data.reranker_alpha.toFixed(2)}`
+                : ""}
+              {data.reranker_fallback_reason ? " · semantic fallback" : ""}
               {data.max_per_evaluation ? ` · max ${data.max_per_evaluation}/report` : " · uncapped"}
             </span>
           </div>
@@ -163,13 +179,18 @@ export function SearchExperience() {
               </div>
               <h2>{hit.title}</h2>
               <p>{hit.text}</p>
-              {(hit.lexical_score !== null || hit.semantic_score !== null) && (
+              {(hit.lexical_score !== null ||
+                hit.semantic_score !== null ||
+                hit.reranker_score !== null) && (
                 <div className="score-row">
                   {hit.lexical_score !== null && (
                     <span>lexical {hit.lexical_score.toFixed(3)}</span>
                   )}
                   {hit.semantic_score !== null && (
                     <span>semantic {hit.semantic_score.toFixed(3)}</span>
+                  )}
+                  {hit.reranker_score !== null && (
+                    <span>AidRanker {hit.reranker_score.toFixed(3)}</span>
                   )}
                 </div>
               )}
