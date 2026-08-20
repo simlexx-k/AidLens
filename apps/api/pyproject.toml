@@ -28,6 +28,11 @@ ml = [
   "torch>=2.4,<4.0",
   "transformers>=4.44,<6.0",
 ]
+nli = [
+  "sentencepiece>=0.2,<1.0",
+  "torch>=2.4,<4.0",
+  "transformers>=4.44,<6.0",
+]
 onnx = [
   "sentence-transformers[onnx]>=3.0,<7.0",
 ]
