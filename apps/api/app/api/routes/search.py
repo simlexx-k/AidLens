@@ -7,6 +7,7 @@ from app.api.dependencies import DbSession
 from app.core.config import get_settings
 from app.schemas.evaluation import EvidenceSearchRequest, EvidenceSearchResponse
 from app.services.embeddings.sentence_transformer import SentenceTransformerEncoder
+from app.services.ranker.provider import get_aidranker_service
 from app.services.ranker.serving import AidRankerService
 from app.services.search.engine import execute_search
 
@@ -16,19 +17,6 @@ router = APIRouter(prefix="/search", tags=["search"])
 @lru_cache(maxsize=4)
 def _encoder(model_name: str) -> SentenceTransformerEncoder:
     return SentenceTransformerEncoder(model_name)
-
-
-@lru_cache(maxsize=4)
-def _aidranker(
-    model_name_or_path: str,
-    candidate_k: int,
-    fail_open: bool,
-) -> AidRankerService:
-    return AidRankerService(
-        model_name_or_path,
-        candidate_k=candidate_k,
-        fail_open=fail_open,
-    )
 
 
 @router.post("/evidence", response_model=EvidenceSearchResponse)
@@ -74,9 +62,11 @@ async def search_evidence(
 
     reranker: AidRankerService | None = None
     if payload.rerank != "disabled" and aidranker_enabled and query_vector is not None:
-        reranker = _aidranker(
+        reranker = get_aidranker_service(
             settings.aidranker_model,
             settings.aidranker_candidate_k,
+            settings.aidranker_batch_size,
+            settings.aidranker_device,
             settings.aidranker_fail_open,
         )
 
