@@ -41,10 +41,22 @@ _FACET_ORDER: dict[EvidenceFacetKind, int] = {
     "keyword": 2,
 }
 _SYNTHESIS_CAVEATS = [
-    "This synthesis covers only the final ranked passages returned for this query, not the full corpus.",
-    "Recurring facets are structured metadata co-occurrence signals, not causal 'what works' claims.",
-    "Context overlap is a metadata similarity signal, not evidence that an intervention will transfer.",
-    "AidLens does not infer supporting or contradictory effect stance in V1.2; inspect source passages before drawing effect conclusions.",
+    (
+        "This synthesis covers only the final ranked passages returned for this query, "
+        "not the full corpus."
+    ),
+    (
+        "Recurring facets are structured metadata co-occurrence signals, not causal "
+        "'what works' claims."
+    ),
+    (
+        "Context overlap is a metadata similarity signal, not evidence that an "
+        "intervention will transfer."
+    ),
+    (
+        "AidLens does not infer supporting or contradictory effect stance in V1.2; "
+        "inspect source passages before drawing effect conclusions."
+    ),
 ]
 
 
