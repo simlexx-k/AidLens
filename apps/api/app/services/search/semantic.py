@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.evaluation import Evaluation, EvaluationChunk
 from app.schemas.evaluation import EvidenceSearchHit, EvidenceSearchRequest
+from app.services.search.intelligence import evidence_role_for_section
 from app.services.search.lexical import _apply_filters, _snippet
 
 
@@ -28,12 +29,17 @@ async def semantic_search(
                 chunk_id=chunk.id,
                 evaluation_id=evaluation.external_id,
                 title=evaluation.title,
+                project_title=evaluation.project_title,
                 publication_year=evaluation.publication_year,
                 section=chunk.section,
+                evidence_role=evidence_role_for_section(chunk.section),
                 text=_snippet(chunk.text),
                 score=semantic_score,
                 semantic_score=semantic_score,
                 retrieval_sources=["semantic"],
+                locations=evaluation.locations,
+                institutions=evaluation.institutions,
+                keywords=evaluation.keywords,
                 source_url=evaluation.source_url,
             )
         )

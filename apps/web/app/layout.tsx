@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
+import "./evidence-intelligence.css";
 
 export const metadata: Metadata = { title: "AidLens — Development Evidence Intelligence", description: "Search and compare evidence from development program evaluations." };
 

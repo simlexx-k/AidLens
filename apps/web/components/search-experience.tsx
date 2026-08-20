@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { EvidenceSearchResponse, searchEvidence } from "../lib/api";
+import { EvidenceEvaluationGroup, EvidenceSearchResponse, searchEvidence } from "../lib/api";
 
 const sections = [
   ["", "All sections"],
@@ -70,12 +70,12 @@ export function SearchExperience() {
   return (
     <section className="search-shell">
       <div className="search-heading">
-        <span className="eyebrow">Evidence retrieval</span>
-        <h1>Compare evidence across evaluations, not just passages.</h1>
+        <span className="eyebrow">Development evidence intelligence</span>
+        <h1>Move from matching passages to understanding evaluations.</h1>
         <p>
-          AidLens uses semantic evidence retrieval and, when available, AidRanker to
-          prioritize stronger supporting and direct-answer passages before applying the
-          evidence-spread limit across reports.
+          AidLens ranks evidence passages, groups them back into their source evaluations,
+          and separates intervention, context, outcome evidence and supporting evidence
+          without generating claims that are not present in the corpus.
         </p>
       </div>
       <form onSubmit={onSubmit}>
@@ -90,10 +90,7 @@ export function SearchExperience() {
         <div className="search-controls">
           <label>
             Retrieval
-            <select
-              value={mode}
-              onChange={(event) => setMode(event.target.value as typeof mode)}
-            >
+            <select value={mode} onChange={(event) => setMode(event.target.value as typeof mode)}>
               <option value="auto">Auto</option>
               <option value="semantic">Semantic</option>
               <option value="hybrid">Hybrid</option>
@@ -102,10 +99,7 @@ export function SearchExperience() {
           </label>
           <label>
             Ranking
-            <select
-              value={rerank}
-              onChange={(event) => setRerank(event.target.value as typeof rerank)}
-            >
+            <select value={rerank} onChange={(event) => setRerank(event.target.value as typeof rerank)}>
               <option value="auto">Best available</option>
               <option value="disabled">First-stage only</option>
               <option value="aidranker">Require AidRanker</option>
@@ -115,18 +109,13 @@ export function SearchExperience() {
             Section
             <select value={section} onChange={(event) => setSection(event.target.value)}>
               {sections.map(([value, label]) => (
-                <option key={value || "all"} value={value}>
-                  {label}
-                </option>
+                <option key={value || "all"} value={value}>{label}</option>
               ))}
             </select>
           </label>
           <label>
             Evidence spread
-            <select
-              value={maxPerEvaluation}
-              onChange={(event) => setMaxPerEvaluation(event.target.value)}
-            >
+            <select value={maxPerEvaluation} onChange={(event) => setMaxPerEvaluation(event.target.value)}>
               <option value="3">Balanced · max 3/report</option>
               <option value="1">Broad · max 1/report</option>
               <option value="2">Broader · max 2/report</option>
@@ -136,19 +125,11 @@ export function SearchExperience() {
           </label>
           <label>
             From year
-            <input
-              value={yearFrom}
-              onChange={(event) => setYearFrom(event.target.value)}
-              inputMode="numeric"
-            />
+            <input value={yearFrom} onChange={(event) => setYearFrom(event.target.value)} inputMode="numeric" />
           </label>
           <label>
             To year
-            <input
-              value={yearTo}
-              onChange={(event) => setYearTo(event.target.value)}
-              inputMode="numeric"
-            />
+            <input value={yearTo} onChange={(event) => setYearTo(event.target.value)} inputMode="numeric" />
           </label>
         </div>
       </form>
@@ -156,51 +137,91 @@ export function SearchExperience() {
       {data && (
         <div className="results">
           <div className="results-meta">
-            <strong>{data.hits.length} evidence passages</strong>
+            <strong>{data.groups.length} evaluations · {data.hits.length} passages</strong>
             <span>
               {data.mode}
               {data.reranker_applied && data.reranker_alpha !== null
                 ? ` · AidRanker α ${data.reranker_alpha.toFixed(2)}`
                 : ""}
               {data.reranker_fallback_reason ? " · semantic fallback" : ""}
-              {data.max_per_evaluation ? ` · max ${data.max_per_evaluation}/report` : " · uncapped"}
+              {data.total_search_latency_ms !== null ? ` · ${Math.round(data.total_search_latency_ms)} ms` : ""}
             </span>
           </div>
-          {data.hits.length === 0 && (
-            <div className="empty-state">No matching passages yet.</div>
-          )}
-          {data.hits.map((hit) => (
-            <article className="result-card" key={hit.chunk_id}>
-              <div className="result-kicker">
-                <span>{hit.publication_year ?? "Year unknown"}</span>
-                {hit.section && <span>{hit.section.replaceAll("_", " ")}</span>}
-                <span>{hit.retrieval_sources.join(" + ")}</span>
-                <span>score {hit.score.toFixed(4)}</span>
-              </div>
-              <h2>{hit.title}</h2>
-              <p>{hit.text}</p>
-              {(hit.lexical_score !== null ||
-                hit.semantic_score !== null ||
-                hit.reranker_score !== null) && (
-                <div className="score-row">
-                  {hit.lexical_score !== null && (
-                    <span>lexical {hit.lexical_score.toFixed(3)}</span>
-                  )}
-                  {hit.semantic_score !== null && (
-                    <span>semantic {hit.semantic_score.toFixed(3)}</span>
-                  )}
-                  {hit.reranker_score !== null && (
-                    <span>AidRanker {hit.reranker_score.toFixed(3)}</span>
-                  )}
-                </div>
-              )}
-              <a href={hit.source_url} target="_blank" rel="noreferrer">
-                Open source evaluation ↗
-              </a>
-            </article>
-          ))}
+
+          <div className="pipeline-strip">
+            <span>{data.ranking_pipeline.join(" → ")}</span>
+            {data.reranker_model_fingerprint && (
+              <code title={data.reranker_model_fingerprint}>
+                model {data.reranker_model_fingerprint.slice(7, 19)}
+              </code>
+            )}
+          </div>
+
+          {data.hits.length === 0 && <div className="empty-state">No matching evidence yet.</div>}
+          {data.groups.map((group) => <EvidenceGroup key={group.evaluation_id} group={group} />)}
         </div>
       )}
     </section>
+  );
+}
+
+function EvidenceGroup({ group }: { group: EvidenceEvaluationGroup }) {
+  const context = [...group.locations, ...group.institutions, ...group.keywords].slice(0, 6);
+
+  return (
+    <article className="evidence-group">
+      <div className="group-heading">
+        <div>
+          <div className="result-kicker">
+            <span>{group.publication_year ?? "Year unknown"}</span>
+            <span>{group.evaluation_id}</span>
+            <span>{group.hits.length} passage{group.hits.length === 1 ? "" : "s"}</span>
+          </div>
+          <h2>{group.title}</h2>
+        </div>
+        <a href={group.source_url} target="_blank" rel="noreferrer">Open evaluation ↗</a>
+      </div>
+
+      <div className="evidence-frame">
+        <div>
+          <span>Intervention</span>
+          <strong>{group.intervention}</strong>
+        </div>
+        <div>
+          <span>Context</span>
+          <strong>{context.length ? context.join(" · ") : "No structured context metadata"}</strong>
+        </div>
+        <div>
+          <span>Outcome evidence</span>
+          <strong>
+            {group.outcome_evidence_count > 0
+              ? `${group.outcome_evidence_count} outcome/sustainability passage${group.outcome_evidence_count === 1 ? "" : "s"}`
+              : "No outcome-tagged passage in these results"}
+          </strong>
+        </div>
+        <div>
+          <span>Evidence</span>
+          <strong>{group.evidence_roles.join(" · ")}</strong>
+        </div>
+      </div>
+
+      <div className="group-passages">
+        {group.hits.map((hit) => (
+          <div className="evidence-passage" key={hit.chunk_id}>
+            <div className="passage-meta">
+              <span className={`role-badge role-${hit.evidence_role}`}>{hit.evidence_role}</span>
+              {hit.section && <span>{hit.section.replaceAll("_", " ")}</span>}
+              <span>score {hit.score.toFixed(3)}</span>
+            </div>
+            <p>{hit.text}</p>
+            <div className="score-row">
+              {hit.semantic_score !== null && <span>semantic {hit.semantic_score.toFixed(3)}</span>}
+              {hit.reranker_score !== null && <span>AidRanker {hit.reranker_score.toFixed(3)}</span>}
+              {hit.fusion_score !== null && <span>fusion {hit.fusion_score.toFixed(3)}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </article>
   );
 }

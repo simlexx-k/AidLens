@@ -1,6 +1,8 @@
 import asyncio
+import hashlib
 import math
 from functools import cached_property
+from pathlib import Path
 
 from app.schemas.evaluation import EvidenceSearchHit
 
@@ -35,6 +37,25 @@ class AidRankerService:
                 "AIDLENS_API_EXTRAS=ml."
             ) from exc
         return CrossEncoder(self.model_name_or_path)
+
+    @cached_property
+    def artifact_fingerprint(self) -> str | None:
+        """Fingerprint local model weights/config so ranked responses are reproducible."""
+
+        root = Path(self.model_name_or_path)
+        if not root.is_dir():
+            return None
+        candidates = [root / "config.json", root / "model.safetensors"]
+        files = [path for path in candidates if path.is_file()]
+        if not files:
+            return None
+        digest = hashlib.sha256()
+        for path in files:
+            digest.update(path.name.encode("utf-8"))
+            with path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        return f"sha256:{digest.hexdigest()}"
 
     async def rerank(
         self,

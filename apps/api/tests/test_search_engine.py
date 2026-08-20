@@ -53,6 +53,10 @@ async def test_hybrid_search_serializes_shared_session_operations(monkeypatch) -
 
     assert response.mode == "hybrid"
     assert len(response.hits) == 2
+    assert len(response.groups) == 2
+    assert response.ranking_pipeline == ["lexical", "semantic", "rrf"]
+    assert response.first_stage_latency_ms is not None
+    assert response.total_search_latency_ms is not None
     assert active_operations == 0
 
 
@@ -82,6 +86,8 @@ async def test_lexical_search_can_cap_results_per_evaluation(monkeypatch) -> Non
 
     assert response.max_per_evaluation == 1
     assert [hit.evaluation_id for hit in response.hits] == ["A", "B", "C"]
+    assert response.ranking_pipeline == ["lexical", "diversity:max-1-per-report"]
+    assert [group.evaluation_id for group in response.groups] == ["A", "B", "C"]
 
 
 @pytest.mark.asyncio
@@ -105,6 +111,7 @@ async def test_auto_uses_semantic_aidranker_before_diversity(monkeypatch) -> Non
         name = "aidranker-v1"
         alpha = 0.5
         model_name_or_path = "fake-model"
+        artifact_fingerprint = "sha256:test"
         candidate_k = 40
         fail_open = True
 
@@ -133,6 +140,14 @@ async def test_auto_uses_semantic_aidranker_before_diversity(monkeypatch) -> Non
     assert response.reranker_applied is True
     assert response.reranker == "aidranker-v1"
     assert response.reranker_alpha == 0.5
+    assert response.reranker_model_fingerprint == "sha256:test"
+    assert response.reranker_latency_ms is not None
+    assert response.ranking_pipeline == [
+        "semantic",
+        "aidranker-v1",
+        "fusion:0.50",
+        "diversity:max-1-per-report",
+    ]
     assert [hit.evaluation_id for hit in response.hits] == ["B", "A"]
 
 
@@ -166,6 +181,7 @@ async def test_auto_aidranker_failure_falls_back_to_semantic(monkeypatch) -> Non
     assert response.mode == "semantic"
     assert response.reranker_applied is False
     assert response.reranker_fallback_reason == "aidranker_unavailable"
+    assert response.ranking_pipeline == ["semantic"]
     assert response.hits == hits
 
 

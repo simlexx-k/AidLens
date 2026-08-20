@@ -1,4 +1,5 @@
 import logging
+from time import perf_counter
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +10,7 @@ from app.schemas.evaluation import (
 )
 from app.services.ranker.serving import AidRankerService
 from app.services.search.hybrid import reciprocal_rank_fusion
+from app.services.search.intelligence import group_evidence_hits
 from app.services.search.lexical import lexical_search
 from app.services.search.semantic import semantic_search
 
@@ -23,6 +25,7 @@ async def execute_search(
     embedding_model: str | None = None,
     reranker: AidRankerService | None = None,
 ) -> EvidenceSearchResponse:
+    started = perf_counter()
     reranker_requested = payload.rerank != "disabled"
     if payload.rerank == "aidranker" and reranker is None:
         raise ValueError("AidRanker reranking is not enabled on this API instance.")
@@ -37,16 +40,20 @@ async def execute_search(
             mode = "hybrid" if query_vector is not None else "lexical"
 
     if mode == "lexical":
+        retrieval_started = perf_counter()
         retrieval_payload = payload.model_copy(
             update={"top_k": _diversity_pool_k(payload)}
         )
         hits = await lexical_search(session, retrieval_payload)
+        first_stage_ms = _elapsed_ms(retrieval_started)
         hits = _finalize_hits(hits, payload)
-        return EvidenceSearchResponse(
-            query=payload.query,
+        return _build_response(
+            payload,
             mode=mode,
-            max_per_evaluation=payload.max_per_evaluation,
             hits=hits,
+            started=started,
+            first_stage_latency_ms=first_stage_ms,
+            ranking_pipeline=_pipeline(["lexical"], payload),
         )
 
     if query_vector is None:
@@ -59,8 +66,10 @@ async def execute_search(
             query_vector=query_vector,
             embedding_model=embedding_model,
             reranker=reranker if reranker_requested else None,
+            started=started,
         )
 
+    retrieval_started = perf_counter()
     pool_k = _diversity_pool_k(payload)
     candidate_k = min(max(pool_k * 4, 20), 100)
     candidate_payload = payload.model_copy(update={"top_k": candidate_k})
@@ -78,14 +87,17 @@ async def execute_search(
         semantic_hits,
         top_k=pool_k,
     )
+    first_stage_ms = _elapsed_ms(retrieval_started)
     hits = _finalize_hits(hits, payload)
 
-    return EvidenceSearchResponse(
-        query=payload.query,
+    return _build_response(
+        payload,
         mode=mode,
-        embedding_model=embedding_model,
-        max_per_evaluation=payload.max_per_evaluation,
         hits=hits,
+        started=started,
+        embedding_model=embedding_model,
+        first_stage_latency_ms=first_stage_ms,
+        ranking_pipeline=_pipeline(["lexical", "semantic", "rrf"], payload),
     )
 
 
@@ -96,6 +108,7 @@ async def _semantic_response(
     query_vector: list[float],
     embedding_model: str | None,
     reranker: AidRankerService | None,
+    started: float,
 ) -> EvidenceSearchResponse:
     pool_k = (
         _reranker_pool_k(payload, reranker.candidate_k)
@@ -103,11 +116,15 @@ async def _semantic_response(
         else _diversity_pool_k(payload)
     )
     retrieval_payload = payload.model_copy(update={"top_k": pool_k})
+    retrieval_started = perf_counter()
     hits = await semantic_search(session, retrieval_payload, query_vector)
+    first_stage_ms = _elapsed_ms(retrieval_started)
 
     reranker_applied = False
+    reranker_ms: float | None = None
     fallback_reason: str | None = None
     if reranker is not None:
+        rerank_started = perf_counter()
         try:
             hits = await reranker.rerank(payload.query, hits)
             reranker_applied = True
@@ -116,13 +133,21 @@ async def _semantic_response(
             if payload.rerank == "aidranker" or not reranker.fail_open:
                 raise ValueError("AidRanker reranking is temporarily unavailable.") from exc
             fallback_reason = "aidranker_unavailable"
+        finally:
+            reranker_ms = _elapsed_ms(rerank_started)
 
     hits = _finalize_hits(hits, payload)
-    return EvidenceSearchResponse(
-        query=payload.query,
+    pipeline = ["semantic"]
+    if reranker_applied and reranker is not None:
+        pipeline.extend([reranker.name, f"fusion:{reranker.alpha:.2f}"])
+    return _build_response(
+        payload,
         mode="semantic",
+        hits=hits,
+        started=started,
         embedding_model=embedding_model,
-        max_per_evaluation=payload.max_per_evaluation,
+        first_stage_latency_ms=first_stage_ms,
+        reranker_latency_ms=reranker_ms,
         reranker_applied=reranker_applied,
         reranker=reranker.name if reranker_applied and reranker is not None else None,
         reranker_model=(
@@ -130,10 +155,62 @@ async def _semantic_response(
             if reranker_applied and reranker is not None
             else None
         ),
+        reranker_model_fingerprint=(
+            reranker.artifact_fingerprint
+            if reranker_applied and reranker is not None
+            else None
+        ),
         reranker_alpha=reranker.alpha if reranker_applied and reranker is not None else None,
         reranker_fallback_reason=fallback_reason,
+        ranking_pipeline=_pipeline(pipeline, payload),
+    )
+
+
+def _build_response(
+    payload: EvidenceSearchRequest,
+    *,
+    mode: str,
+    hits: list[EvidenceSearchHit],
+    started: float,
+    ranking_pipeline: list[str],
+    embedding_model: str | None = None,
+    first_stage_latency_ms: float | None = None,
+    reranker_latency_ms: float | None = None,
+    reranker_applied: bool = False,
+    reranker: str | None = None,
+    reranker_model: str | None = None,
+    reranker_model_fingerprint: str | None = None,
+    reranker_alpha: float | None = None,
+    reranker_fallback_reason: str | None = None,
+) -> EvidenceSearchResponse:
+    return EvidenceSearchResponse(
+        query=payload.query,
+        mode=mode,
+        embedding_model=embedding_model,
+        max_per_evaluation=payload.max_per_evaluation,
+        reranker_applied=reranker_applied,
+        reranker=reranker,
+        reranker_model=reranker_model,
+        reranker_model_fingerprint=reranker_model_fingerprint,
+        reranker_alpha=reranker_alpha,
+        reranker_fallback_reason=reranker_fallback_reason,
+        ranking_pipeline=ranking_pipeline,
+        first_stage_latency_ms=first_stage_latency_ms,
+        reranker_latency_ms=reranker_latency_ms,
+        total_search_latency_ms=_elapsed_ms(started),
+        groups=group_evidence_hits(hits),
         hits=hits,
     )
+
+
+def _pipeline(stages: list[str], payload: EvidenceSearchRequest) -> list[str]:
+    if payload.max_per_evaluation is not None:
+        return [*stages, f"diversity:max-{payload.max_per_evaluation}-per-report"]
+    return stages
+
+
+def _elapsed_ms(started: float) -> float:
+    return round((perf_counter() - started) * 1000.0, 3)
 
 
 def _reranker_pool_k(payload: EvidenceSearchRequest, configured_candidate_k: int) -> int:
