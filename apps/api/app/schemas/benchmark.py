@@ -62,6 +62,8 @@ class RankerTrainingRecord(BaseModel):
     score: float
     lexical_score: float | None = None
     semantic_score: float | None = None
+    retrieval_modes: list[str] = Field(default_factory=list)
+    mode_ranks: dict[str, int] = Field(default_factory=dict)
 
 
 class RetrievalMetrics(BaseModel):
