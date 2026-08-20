@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-base-en-v1.5"
     embedding_dimensions: int = 768
 
+    aidranker_provider: Literal["disabled", "sentence-transformers"] = "disabled"
+    aidranker_model: str = "models/aidranker-v1.local"
+    aidranker_candidate_k: int = Field(default=40, ge=10, le=100)
+    aidranker_fail_open: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:
