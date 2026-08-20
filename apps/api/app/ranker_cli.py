@@ -9,7 +9,12 @@ from app.services.ranker.dataset import (
     split_ranker_records,
     write_ranker_split,
 )
-from app.services.ranker.evaluation import evaluate_aidranker_model, write_ranker_report
+from app.services.ranker.evaluation import (
+    DEFAULT_FUSION_ALPHAS,
+    evaluate_aidranker_fusion_sweep_model,
+    evaluate_aidranker_model,
+    write_ranker_report,
+)
 from app.services.ranker.training import DEFAULT_RANKER_MODEL, train_aidranker
 
 cli = typer.Typer(no_args_is_help=True, help="Offline AidRanker V1 experiments.")
@@ -132,6 +137,84 @@ def evaluate_command(
         write_ranker_report(report, output)
         typer.echo(f"report={output}")
     typer.echo(json.dumps(report, indent=2))
+
+
+@cli.command("sweep-fusion")
+def sweep_fusion_command(
+    dataset: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Development split JSONL. Do not use held-out test data here.",
+        ),
+    ],
+    model_path: Annotated[
+        str,
+        typer.Option("--model-path", help="Fine-tuned CrossEncoder directory."),
+    ],
+    candidate_mode: Annotated[
+        str,
+        typer.Option(
+            "--candidate-mode",
+            help="First-stage candidates to fuse with AidRanker scores.",
+        ),
+    ] = "semantic",
+    alphas: Annotated[
+        str,
+        typer.Option(
+            help=(
+                "Comma-separated global AidRanker weights. "
+                "0=first-stage only, 1=AidRanker only."
+            )
+        ),
+    ] = ",".join(str(alpha) for alpha in DEFAULT_FUSION_ALPHAS),
+    diversity_tolerance: Annotated[
+        float,
+        typer.Option(
+            min=0.0,
+            max=1.0,
+            help="Maximum allowed increase in mean duplicate share.",
+        ),
+    ] = 0.05,
+    top_k: Annotated[int, typer.Option(min=1, max=50)] = 10,
+    batch_size: Annotated[int, typer.Option(min=1, max=256)] = 32,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False),
+    ] = None,
+) -> None:
+    """Select one dev-only semantic/AidRanker fusion weight."""
+
+    records = load_ranker_records(dataset)
+    report = evaluate_aidranker_fusion_sweep_model(
+        records,
+        model_path,
+        candidate_mode=candidate_mode,
+        top_k=top_k,
+        batch_size=batch_size,
+        alphas=_parse_alphas(alphas),
+        diversity_tolerance=diversity_tolerance,
+    )
+    if output:
+        write_ranker_report(report, output)
+        typer.echo(f"report={output}")
+    typer.echo(json.dumps(report, indent=2))
+
+
+def _parse_alphas(value: str) -> list[float]:
+    parts = [item.strip() for item in value.split(",") if item.strip()]
+    if not parts:
+        raise typer.BadParameter("Provide at least one fusion alpha.")
+    try:
+        alphas = [float(item) for item in parts]
+    except ValueError as exc:
+        raise typer.BadParameter("Fusion alphas must be numeric.") from exc
+    invalid = [alpha for alpha in alphas if alpha < 0.0 or alpha > 1.0]
+    if invalid:
+        raise typer.BadParameter("Fusion alphas must be between 0 and 1.")
+    return list(dict.fromkeys(alphas))
 
 
 if __name__ == "__main__":
