@@ -110,8 +110,12 @@ async def test_auto_uses_semantic_aidranker_before_diversity(monkeypatch) -> Non
     class FakeRanker:
         name = "aidranker-v1"
         alpha = 0.5
+        backend = "torch"
+        batch_size = 32
+        device = "auto"
         model_name_or_path = "fake-model"
         artifact_fingerprint = "sha256:test"
+        model_load_latency_ms = 123.0
         candidate_k = 40
         fail_open = True
 
@@ -141,6 +145,10 @@ async def test_auto_uses_semantic_aidranker_before_diversity(monkeypatch) -> Non
     assert response.reranker == "aidranker-v1"
     assert response.reranker_alpha == 0.5
     assert response.reranker_model_fingerprint == "sha256:test"
+    assert response.reranker_backend == "torch"
+    assert response.reranker_batch_size == 32
+    assert response.reranker_device == "auto"
+    assert response.reranker_model_load_latency_ms == 123.0
     assert response.reranker_latency_ms is not None
     assert response.ranking_pipeline == [
         "semantic",
