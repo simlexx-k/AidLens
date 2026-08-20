@@ -29,6 +29,10 @@ models/
 *.bin
 *.safetensors
 
+# Local benchmark reviews / reports
+apps/api/benchmarks/*.local.json
+apps/api/benchmarks/*.local.jsonl
+
 # IDE / OS
 .vscode/
 .idea/
