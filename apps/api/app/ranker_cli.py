@@ -22,7 +22,10 @@ from app.services.ranker.evaluation import (
 from app.services.ranker.fixed_fusion import evaluate_aidranker_fixed_fusion_model
 from app.services.ranker.training import DEFAULT_RANKER_MODEL, train_aidranker
 
-cli = typer.Typer(no_args_is_help=True, help="Offline AidRanker V1 experiments and serving benchmarks.")
+cli = typer.Typer(
+    no_args_is_help=True,
+    help="Offline AidRanker V1 experiments and serving benchmarks.",
+)
 
 
 @cli.command("split")
