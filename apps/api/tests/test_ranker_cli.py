@@ -27,7 +27,11 @@ def test_ranker_split_help_exposes_seed_and_output() -> None:
 
 
 def test_ranker_fusion_help_exposes_dev_calibration_controls() -> None:
-    result = runner.invoke(cli, ["sweep-fusion", "--help"])
+    result = runner.invoke(
+        cli,
+        ["sweep-fusion", "--help"],
+        terminal_width=180,
+    )
     output = unstyle(result.stdout)
 
     assert result.exit_code == 0
