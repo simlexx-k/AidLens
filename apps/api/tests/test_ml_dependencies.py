@@ -1,5 +1,5 @@
-from pathlib import Path
 import tomllib
+from pathlib import Path
 
 
 def test_ml_extra_includes_sentence_transformers_training_dependencies() -> None:
