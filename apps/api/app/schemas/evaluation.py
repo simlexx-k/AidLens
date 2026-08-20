@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 SearchMode = Literal["auto", "lexical", "semantic", "hybrid"]
+RerankMode = Literal["auto", "disabled", "aidranker"]
 
 
 class EvaluationSummary(BaseModel):
@@ -33,6 +34,7 @@ class EvidenceSearchRequest(BaseModel):
     query: str = Field(min_length=2, max_length=500)
     top_k: int = Field(default=10, ge=1, le=50)
     mode: SearchMode = "auto"
+    rerank: RerankMode = "auto"
     publication_year_from: int | None = Field(default=None, ge=1900, le=2100)
     publication_year_to: int | None = Field(default=None, ge=1900, le=2100)
     section: str | None = Field(default=None, max_length=128)
@@ -49,6 +51,8 @@ class EvidenceSearchHit(BaseModel):
     score: float
     lexical_score: float | None = None
     semantic_score: float | None = None
+    reranker_score: float | None = None
+    fusion_score: float | None = None
     retrieval_sources: list[str] = Field(default_factory=list)
     source_url: str
 
@@ -58,4 +62,9 @@ class EvidenceSearchResponse(BaseModel):
     mode: str
     embedding_model: str | None = None
     max_per_evaluation: int | None = None
+    reranker_applied: bool = False
+    reranker: str | None = None
+    reranker_model: str | None = None
+    reranker_alpha: float | None = None
+    reranker_fallback_reason: str | None = None
     hits: list[EvidenceSearchHit]

@@ -84,6 +84,122 @@ async def test_lexical_search_can_cap_results_per_evaluation(monkeypatch) -> Non
     assert [hit.evaluation_id for hit in response.hits] == ["A", "B", "C"]
 
 
+@pytest.mark.asyncio
+async def test_auto_uses_semantic_aidranker_before_diversity(monkeypatch) -> None:
+    semantic_calls = 0
+
+    async def semantic_search(session, payload, query_vector):
+        nonlocal semantic_calls
+        semantic_calls += 1
+        assert payload.top_k == 40
+        return [
+            _hit("semantic", "A"),
+            _hit("semantic", "A"),
+            _hit("semantic", "B"),
+        ]
+
+    async def lexical_search(session, payload):
+        raise AssertionError("Auto with AidRanker should not call lexical retrieval.")
+
+    class FakeRanker:
+        name = "aidranker-v1"
+        alpha = 0.5
+        model_name_or_path = "fake-model"
+        candidate_k = 40
+        fail_open = True
+
+        async def rerank(self, query, hits):
+            assert query == "food security"
+            return list(reversed(hits))
+
+    monkeypatch.setattr(engine, "semantic_search", semantic_search)
+    monkeypatch.setattr(engine, "lexical_search", lexical_search)
+
+    response = await engine.execute_search(
+        object(),
+        EvidenceSearchRequest(
+            query="food security",
+            mode="auto",
+            top_k=2,
+            max_per_evaluation=1,
+        ),
+        query_vector=[0.1, 0.2],
+        embedding_model="test-model",
+        reranker=FakeRanker(),
+    )
+
+    assert semantic_calls == 1
+    assert response.mode == "semantic"
+    assert response.reranker_applied is True
+    assert response.reranker == "aidranker-v1"
+    assert response.reranker_alpha == 0.5
+    assert [hit.evaluation_id for hit in response.hits] == ["B", "A"]
+
+
+@pytest.mark.asyncio
+async def test_auto_aidranker_failure_falls_back_to_semantic(monkeypatch) -> None:
+    hits = [_hit("semantic", "A"), _hit("semantic", "B")]
+
+    async def semantic_search(session, payload, query_vector):
+        return hits
+
+    class FailingRanker:
+        name = "aidranker-v1"
+        alpha = 0.5
+        model_name_or_path = "missing-model"
+        candidate_k = 40
+        fail_open = True
+
+        async def rerank(self, query, candidates):
+            raise RuntimeError("model missing")
+
+    monkeypatch.setattr(engine, "semantic_search", semantic_search)
+
+    response = await engine.execute_search(
+        object(),
+        EvidenceSearchRequest(query="food security", mode="auto", top_k=2),
+        query_vector=[0.1, 0.2],
+        embedding_model="test-model",
+        reranker=FailingRanker(),
+    )
+
+    assert response.mode == "semantic"
+    assert response.reranker_applied is False
+    assert response.reranker_fallback_reason == "aidranker_unavailable"
+    assert response.hits == hits
+
+
+@pytest.mark.asyncio
+async def test_explicit_aidranker_failure_is_not_silently_degraded(monkeypatch) -> None:
+    async def semantic_search(session, payload, query_vector):
+        return [_hit("semantic")]
+
+    class FailingRanker:
+        name = "aidranker-v1"
+        alpha = 0.5
+        model_name_or_path = "missing-model"
+        candidate_k = 40
+        fail_open = True
+
+        async def rerank(self, query, candidates):
+            raise RuntimeError("model missing")
+
+    monkeypatch.setattr(engine, "semantic_search", semantic_search)
+
+    with pytest.raises(ValueError, match="temporarily unavailable"):
+        await engine.execute_search(
+            object(),
+            EvidenceSearchRequest(
+                query="food security",
+                mode="semantic",
+                rerank="aidranker",
+            ),
+            query_vector=[0.1, 0.2],
+            embedding_model="test-model",
+            reranker=FailingRanker(),
+        )
+
+
 def test_diversified_search_uses_deeper_candidate_pool() -> None:
     payload = EvidenceSearchRequest(
         query="education access",
@@ -93,3 +209,14 @@ def test_diversified_search_uses_deeper_candidate_pool() -> None:
     )
 
     assert engine._diversity_pool_k(payload) == 90
+
+
+def test_aidranker_pool_is_bounded_for_serving_latency() -> None:
+    payload = EvidenceSearchRequest(
+        query="education access",
+        mode="semantic",
+        top_k=10,
+        max_per_evaluation=3,
+    )
+
+    assert engine._reranker_pool_k(payload, configured_candidate_k=40) == 40
