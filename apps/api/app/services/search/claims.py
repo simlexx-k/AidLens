@@ -53,9 +53,6 @@ _POSITIVE_PATTERNS = (
     re.compile(r"\bsuccessfully\b", re.IGNORECASE),
     re.compile(r"\bachieved (?:its |the |their )?(?:target|objective|goal)s?\b", re.IGNORECASE),
     re.compile(r"\b(?:met|exceeded) (?:its |the |their )?targets?\b", re.IGNORECASE),
-    re.compile(r"\bcontributed to\b", re.IGNORECASE),
-    re.compile(r"\bled to\b", re.IGNORECASE),
-    re.compile(r"\bresulted in\b", re.IGNORECASE),
     re.compile(r"\bbenefited?\b", re.IGNORECASE),
     re.compile(r"\bstrengthened?\b", re.IGNORECASE),
     re.compile(r"\benhanced?\b", re.IGNORECASE),
@@ -104,10 +101,11 @@ def extract_grounded_claims(
 
     The extractor never rewrites the source sentence. Stance is assigned only from
     explicit lexical signals inside that sentence; section labels and metadata do
-    not determine stance. Questions, prospective/modal statements and indicator
-    labels abstain rather than being promoted to observed effect claims. When no
-    effect signal is present, one source sentence is returned as
-    `not_an_effect_claim` so absence is visible rather than silently omitted.
+    not determine stance. Questions, prospective/modal statements, indicator labels,
+    and generic causal verbs without an explicit directional outcome signal abstain
+    rather than being promoted to observed effect claims. When no effect signal is
+    present, one source sentence is returned as `not_an_effect_claim` so absence is
+    visible rather than silently omitted.
     """
 
     claims: list[GroundedEvidenceClaim] = []
