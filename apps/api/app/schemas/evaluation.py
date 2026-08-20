@@ -14,6 +14,7 @@ EvidenceRole = Literal[
     "sustainability",
     "supporting",
 ]
+EvidenceFacetKind = Literal["location", "institution", "keyword"]
 
 
 class EvaluationSummary(BaseModel):
@@ -87,6 +88,39 @@ class EvidenceEvaluationGroup(BaseModel):
     hits: list[EvidenceSearchHit]
 
 
+class EvidenceRoleCoverage(BaseModel):
+    role: EvidenceRole
+    evaluation_count: int
+    passage_count: int
+
+
+class CrossEvaluationFacet(BaseModel):
+    kind: EvidenceFacetKind
+    value: str
+    evaluation_count: int
+    evaluation_ids: list[str]
+
+
+class TransferabilityPair(BaseModel):
+    left_evaluation_id: str
+    right_evaluation_id: str
+    context_overlap_score: float
+    shared_signal_count: int
+    shared_locations: list[str] = Field(default_factory=list)
+    shared_institutions: list[str] = Field(default_factory=list)
+    shared_keywords: list[str] = Field(default_factory=list)
+
+
+class CrossEvaluationSynthesis(BaseModel):
+    evaluation_count: int
+    passage_count: int
+    outcome_evaluation_count: int
+    role_coverage: list[EvidenceRoleCoverage] = Field(default_factory=list)
+    recurring_facets: list[CrossEvaluationFacet] = Field(default_factory=list)
+    transferability_pairs: list[TransferabilityPair] = Field(default_factory=list)
+    caveats: list[str] = Field(default_factory=list)
+
+
 class EvidenceSearchResponse(BaseModel):
     query: str
     mode: str
@@ -108,5 +142,6 @@ class EvidenceSearchResponse(BaseModel):
     reranker_latency_ms: float | None = None
     total_search_latency_ms: float | None = None
     request_latency_ms: float | None = None
+    synthesis: CrossEvaluationSynthesis | None = None
     groups: list[EvidenceEvaluationGroup] = Field(default_factory=list)
     hits: list[EvidenceSearchHit]

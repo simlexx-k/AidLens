@@ -10,7 +10,7 @@ from app.schemas.evaluation import (
 )
 from app.services.ranker.serving import AidRankerService
 from app.services.search.hybrid import reciprocal_rank_fusion
-from app.services.search.intelligence import group_evidence_hits
+from app.services.search.intelligence import group_evidence_hits, synthesize_evidence_groups
 from app.services.search.lexical import lexical_search
 from app.services.search.semantic import semantic_search
 
@@ -197,6 +197,7 @@ def _build_response(
     reranker_model_load_latency_ms: float | None = None,
     reranker_fallback_reason: str | None = None,
 ) -> EvidenceSearchResponse:
+    groups = group_evidence_hits(hits)
     return EvidenceSearchResponse(
         query=payload.query,
         mode=mode,
@@ -216,7 +217,8 @@ def _build_response(
         first_stage_latency_ms=first_stage_latency_ms,
         reranker_latency_ms=reranker_latency_ms,
         total_search_latency_ms=_elapsed_ms(started),
-        groups=group_evidence_hits(hits),
+        synthesis=synthesize_evidence_groups(groups),
+        groups=groups,
         hits=hits,
     )
 

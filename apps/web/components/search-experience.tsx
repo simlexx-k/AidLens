@@ -2,7 +2,12 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { EvidenceEvaluationGroup, EvidenceSearchResponse, searchEvidence } from "../lib/api";
+import {
+  CrossEvaluationSynthesis,
+  EvidenceEvaluationGroup,
+  EvidenceSearchResponse,
+  searchEvidence,
+} from "../lib/api";
 
 const sections = [
   ["", "All sections"],
@@ -71,11 +76,11 @@ export function SearchExperience() {
     <section className="search-shell">
       <div className="search-heading">
         <span className="eyebrow">Development evidence intelligence</span>
-        <h1>Move from matching passages to understanding evaluations.</h1>
+        <h1>Compare evidence across evaluations without losing the source.</h1>
         <p>
-          AidLens ranks evidence passages, groups them back into their source evaluations,
-          and separates intervention, context, outcome evidence and supporting evidence
-          without generating claims that are not present in the corpus.
+          AidLens ranks passages, groups them back into evaluations, and maps recurring
+          evidence and context signals across the result set. It does not turn metadata
+          overlap into causal claims or transferability verdicts.
         </p>
       </div>
       <form onSubmit={onSubmit}>
@@ -159,10 +164,116 @@ export function SearchExperience() {
             )}
           </div>
 
+          {data.synthesis && data.hits.length > 0 && (
+            <SynthesisPanel synthesis={data.synthesis} groups={data.groups} />
+          )}
+
           {data.hits.length === 0 && <div className="empty-state">No matching evidence yet.</div>}
           {data.groups.map((group) => <EvidenceGroup key={group.evaluation_id} group={group} />)}
         </div>
       )}
+    </section>
+  );
+}
+
+function SynthesisPanel({
+  synthesis,
+  groups,
+}: {
+  synthesis: CrossEvaluationSynthesis;
+  groups: EvidenceEvaluationGroup[];
+}) {
+  const keywords = synthesis.recurring_facets.filter((facet) => facet.kind === "keyword").slice(0, 8);
+  const contexts = synthesis.recurring_facets.filter((facet) => facet.kind !== "keyword").slice(0, 8);
+  const titleById = new Map(groups.map((group) => [group.evaluation_id, group.title]));
+
+  return (
+    <section className="synthesis-panel">
+      <div className="synthesis-heading">
+        <div>
+          <span className="eyebrow">Cross-evaluation evidence map</span>
+          <h2>What recurs across these results?</h2>
+        </div>
+        <span className="synthesis-scope">Result-set synthesis</span>
+      </div>
+
+      <div className="synthesis-metrics">
+        <div><strong>{synthesis.evaluation_count}</strong><span>evaluations compared</span></div>
+        <div><strong>{synthesis.outcome_evaluation_count}</strong><span>with outcome evidence</span></div>
+        <div><strong>{synthesis.recurring_facets.length}</strong><span>recurring context/theme signals</span></div>
+        <div><strong>{synthesis.transferability_pairs.length}</strong><span>context-overlap pairs</span></div>
+      </div>
+
+      <div className="synthesis-grid">
+        <div className="synthesis-section">
+          <span className="synthesis-label">Evidence coverage</span>
+          <div className="coverage-list">
+            {synthesis.role_coverage.map((coverage) => (
+              <span key={coverage.role} className={`coverage-chip role-${coverage.role}`}>
+                {coverage.role} · {coverage.evaluation_count} eval · {coverage.passage_count} passage
+                {coverage.passage_count === 1 ? "" : "s"}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="synthesis-section">
+          <span className="synthesis-label">Recurring themes</span>
+          {keywords.length ? (
+            <div className="facet-list">
+              {keywords.map((facet) => (
+                <span key={`${facet.kind}-${facet.value}`}>
+                  {facet.value} <em>{facet.evaluation_count} eval</em>
+                </span>
+              ))}
+            </div>
+          ) : <p>No keyword appears across multiple returned evaluations.</p>}
+        </div>
+
+        <div className="synthesis-section">
+          <span className="synthesis-label">Recurring context</span>
+          {contexts.length ? (
+            <div className="facet-list">
+              {contexts.map((facet) => (
+                <span key={`${facet.kind}-${facet.value}`}>
+                  {facet.value} <em>{facet.kind} · {facet.evaluation_count} eval</em>
+                </span>
+              ))}
+            </div>
+          ) : <p>No structured location or institution recurs across these results.</p>}
+        </div>
+
+        <div className="synthesis-section transferability-section">
+          <span className="synthesis-label">Context overlap · not a transfer verdict</span>
+          {synthesis.transferability_pairs.length ? (
+            <div className="overlap-list">
+              {synthesis.transferability_pairs.slice(0, 5).map((pair) => {
+                const shared = [
+                  ...pair.shared_locations,
+                  ...pair.shared_institutions,
+                  ...pair.shared_keywords,
+                ].slice(0, 5);
+                return (
+                  <div key={`${pair.left_evaluation_id}-${pair.right_evaluation_id}`}>
+                    <strong>
+                      {shortTitle(titleById.get(pair.left_evaluation_id) ?? pair.left_evaluation_id)}
+                      {" ↔ "}
+                      {shortTitle(titleById.get(pair.right_evaluation_id) ?? pair.right_evaluation_id)}
+                    </strong>
+                    <span>{Math.round(pair.context_overlap_score * 100)}% metadata overlap</span>
+                    <small>{shared.join(" · ")}</small>
+                  </div>
+                );
+              })}
+            </div>
+          ) : <p>No structured context overlap among the returned evaluations.</p>}
+        </div>
+      </div>
+
+      <p className="synthesis-caveat">
+        {synthesis.caveats[0]} {synthesis.caveats[1]} AidLens does not infer contradictory
+        effect stance here; open the ranked passages below before drawing effect conclusions.
+      </p>
     </section>
   );
 }
@@ -226,4 +337,8 @@ function EvidenceGroup({ group }: { group: EvidenceEvaluationGroup }) {
       </div>
     </article>
   );
+}
+
+function shortTitle(value: string): string {
+  return value.length > 42 ? `${value.slice(0, 39)}…` : value;
 }

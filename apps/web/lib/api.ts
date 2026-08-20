@@ -7,6 +7,8 @@ export type EvidenceRole =
   | "sustainability"
   | "supporting";
 
+export type EvidenceFacetKind = "location" | "institution" | "keyword";
+
 export type EvidenceHit = {
   chunk_id: string;
   evaluation_id: string;
@@ -44,6 +46,39 @@ export type EvidenceEvaluationGroup = {
   hits: EvidenceHit[];
 };
 
+export type EvidenceRoleCoverage = {
+  role: EvidenceRole;
+  evaluation_count: number;
+  passage_count: number;
+};
+
+export type CrossEvaluationFacet = {
+  kind: EvidenceFacetKind;
+  value: string;
+  evaluation_count: number;
+  evaluation_ids: string[];
+};
+
+export type TransferabilityPair = {
+  left_evaluation_id: string;
+  right_evaluation_id: string;
+  context_overlap_score: number;
+  shared_signal_count: number;
+  shared_locations: string[];
+  shared_institutions: string[];
+  shared_keywords: string[];
+};
+
+export type CrossEvaluationSynthesis = {
+  evaluation_count: number;
+  passage_count: number;
+  outcome_evaluation_count: number;
+  role_coverage: EvidenceRoleCoverage[];
+  recurring_facets: CrossEvaluationFacet[];
+  transferability_pairs: TransferabilityPair[];
+  caveats: string[];
+};
+
 export type EvidenceSearchResponse = {
   query: string;
   mode: string;
@@ -65,6 +100,7 @@ export type EvidenceSearchResponse = {
   reranker_latency_ms: number | null;
   total_search_latency_ms: number | null;
   request_latency_ms: number | null;
+  synthesis: CrossEvaluationSynthesis | null;
   groups: EvidenceEvaluationGroup[];
   hits: EvidenceHit[];
 };

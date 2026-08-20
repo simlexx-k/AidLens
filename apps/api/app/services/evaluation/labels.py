@@ -13,7 +13,7 @@ from app.schemas.benchmark import (
 def compile_labeled_candidates(
     candidate_sets: list[RankingCandidateSet],
 ) -> tuple[list[BenchmarkQuery], list[RankerTrainingRecord]]:
-    """Compile fully labeled candidate pools into benchmark and ranker datasets."""
+    """Compile fully reviewed candidate pools into benchmark and ranker datasets."""
 
     benchmark_queries: list[BenchmarkQuery] = []
     ranker_records: list[RankerTrainingRecord] = []
@@ -60,7 +60,7 @@ def compile_labeled_candidates(
                 query=item.query,
                 family=item.family,
                 judgments=judgments,
-                notes="Compiled from a fully human-labeled diversified candidate pool.",
+                notes="Compiled from a reviewed pooled candidate set.",
             )
         )
 

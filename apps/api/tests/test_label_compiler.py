@@ -51,6 +51,8 @@ def test_compile_labels_builds_benchmark_and_ranker_records() -> None:
 
     assert len(judgments) == 1
     assert judgments[0].family == "intervention_outcomes"
+    assert judgments[0].notes == "Compiled from a reviewed pooled candidate set."
+    assert "human-labeled" not in judgments[0].notes
     assert len(judgments[0].judgments) == 1
     assert judgments[0].judgments[0].relevance == 3
     assert judgments[0].judgments[0].anchor_text is not None
