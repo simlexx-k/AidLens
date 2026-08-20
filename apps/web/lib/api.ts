@@ -8,6 +8,8 @@ export type EvidenceHit = {
   score: number;
   lexical_score: number | null;
   semantic_score: number | null;
+  reranker_score: number | null;
+  fusion_score: number | null;
   retrieval_sources: string[];
   source_url: string;
 };
@@ -17,12 +19,18 @@ export type EvidenceSearchResponse = {
   mode: string;
   embedding_model: string | null;
   max_per_evaluation: number | null;
+  reranker_applied: boolean;
+  reranker: string | null;
+  reranker_model: string | null;
+  reranker_alpha: number | null;
+  reranker_fallback_reason: string | null;
   hits: EvidenceHit[];
 };
 
 export type SearchOptions = {
   query: string;
   mode?: "auto" | "lexical" | "semantic" | "hybrid";
+  rerank?: "auto" | "disabled" | "aidranker";
   publicationYearFrom?: number;
   publicationYearTo?: number;
   section?: string;
@@ -55,8 +63,9 @@ export async function searchEvidence(options: SearchOptions): Promise<EvidenceSe
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       query: options.query,
-      top_k: options.topK ?? 12,
+      top_k: options.topK ?? 10,
       mode: options.mode ?? "auto",
+      rerank: options.rerank ?? "auto",
       publication_year_from: options.publicationYearFrom,
       publication_year_to: options.publicationYearTo,
       section: options.section || undefined,
