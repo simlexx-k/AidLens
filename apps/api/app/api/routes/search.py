@@ -7,6 +7,7 @@ from app.api.dependencies import DbSession
 from app.core.config import get_settings
 from app.schemas.evaluation import EvidenceSearchRequest, EvidenceSearchResponse
 from app.services.embeddings.sentence_transformer import SentenceTransformerEncoder
+from app.services.ranker.serving import AidRankerService
 from app.services.search.engine import execute_search
 
 router = APIRouter(prefix="/search", tags=["search"])
@@ -17,6 +18,19 @@ def _encoder(model_name: str) -> SentenceTransformerEncoder:
     return SentenceTransformerEncoder(model_name)
 
 
+@lru_cache(maxsize=4)
+def _aidranker(
+    model_name_or_path: str,
+    candidate_k: int,
+    fail_open: bool,
+) -> AidRankerService:
+    return AidRankerService(
+        model_name_or_path,
+        candidate_k=candidate_k,
+        fail_open=fail_open,
+    )
+
+
 @router.post("/evidence", response_model=EvidenceSearchResponse)
 async def search_evidence(
     payload: EvidenceSearchRequest,
@@ -25,6 +39,22 @@ async def search_evidence(
     settings = get_settings()
     needs_vector = payload.mode in {"auto", "semantic", "hybrid"}
     semantic_enabled = settings.embedding_provider == "sentence-transformers"
+    aidranker_enabled = settings.aidranker_provider == "sentence-transformers"
+
+    if payload.rerank == "aidranker" and not aidranker_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "AidRanker is disabled. Set "
+                "AIDLENS_AIDRANKER_PROVIDER=sentence-transformers and provide the "
+                "validated AidRanker V1 model artifact."
+            ),
+        )
+    if payload.rerank == "aidranker" and not semantic_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="AidRanker requires semantic retrieval to be enabled.",
+        )
 
     query_vector: list[float] | None = None
     embedding_model: str | None = None
@@ -42,12 +72,21 @@ async def search_evidence(
             ),
         )
 
+    reranker: AidRankerService | None = None
+    if payload.rerank != "disabled" and aidranker_enabled and query_vector is not None:
+        reranker = _aidranker(
+            settings.aidranker_model,
+            settings.aidranker_candidate_k,
+            settings.aidranker_fail_open,
+        )
+
     try:
         return await execute_search(
             db,
             payload,
             query_vector=query_vector,
             embedding_model=embedding_model,
+            reranker=reranker,
         )
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
