@@ -16,7 +16,9 @@ from app.services.evaluation.benchmark import (
     write_report,
 )
 from app.services.evaluation.candidates import (
+    carry_forward_labels,
     generate_candidate_sets,
+    generate_pooled_candidate_sets,
     load_candidate_queries,
     load_candidate_sets,
     write_candidate_sets,
@@ -249,7 +251,7 @@ def export_ranking_candidates(
         ),
     ] = 3,
 ) -> None:
-    """Export diversified retrieval candidates for relevance labeling."""
+    """Export diversified candidates from one retrieval mode."""
 
     async def run() -> None:
         from app.core.db import SessionLocal
@@ -281,6 +283,134 @@ def export_ranking_candidates(
         )
 
     asyncio.run(run())
+
+
+@cli.command("export-pooled-candidates")
+def export_pooled_candidates(
+    queries: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="JSONL query file.",
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option(
+            "--output",
+            "-o",
+            dir_okay=False,
+            help="Output pooled JSONL candidate set.",
+        ),
+    ],
+    modes: Annotated[
+        str,
+        typer.Option(help="Comma-separated retrievers to pool."),
+    ] = "lexical,semantic,hybrid",
+    per_mode_k: Annotated[
+        int,
+        typer.Option(min=1, max=50, help="Candidates retrieved from each mode."),
+    ] = 20,
+    max_per_evaluation: Annotated[
+        int,
+        typer.Option(
+            min=1,
+            max=20,
+            help="Maximum pooled passages from one evaluation.",
+        ),
+    ] = 5,
+) -> None:
+    """Export a system-neutral pool from independent retriever rankings."""
+
+    async def run() -> None:
+        from app.core.db import SessionLocal
+
+        selected_modes = _parse_modes(modes)
+        encoder = None
+        if any(mode in {"semantic", "hybrid"} for mode in selected_modes):
+            _, encoder = _semantic_encoder()
+        query_items = load_candidate_queries(queries)
+        async with SessionLocal() as session:
+            candidate_sets = await generate_pooled_candidate_sets(
+                session,
+                query_items,
+                modes=selected_modes,
+                per_mode_k=per_mode_k,
+                encoder=encoder,
+                max_per_evaluation=max_per_evaluation,
+            )
+        write_candidate_sets(candidate_sets, output)
+        candidate_count = sum(len(item.candidates) for item in candidate_sets)
+        typer.echo(
+            " ".join(
+                [
+                    f"queries={len(candidate_sets)}",
+                    f"candidates={candidate_count}",
+                    f"output={output}",
+                    f"modes={','.join(selected_modes)}",
+                    f"per_mode_k={per_mode_k}",
+                    f"max_per_evaluation={max_per_evaluation}",
+                ]
+            )
+        )
+
+    asyncio.run(run())
+
+
+@cli.command("carry-forward-labels")
+def carry_forward_labels_command(
+    candidates: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="New candidate pool that should receive existing labels.",
+        ),
+    ],
+    previous: Annotated[
+        Path,
+        typer.Option(
+            "--previous",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Previously reviewed candidate JSONL.",
+        ),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option(
+            "--output",
+            "-o",
+            dir_okay=False,
+            help="Output candidate pool with reused labels.",
+        ),
+    ],
+) -> None:
+    """Reuse labels for query/chunk pairs already reviewed in an older pool."""
+
+    candidate_sets = load_candidate_sets(candidates)
+    previous_sets = load_candidate_sets(previous)
+    copied = carry_forward_labels(candidate_sets, previous_sets)
+    remaining = sum(
+        candidate.relevance is None
+        for item in candidate_sets
+        for candidate in item.candidates
+    )
+    write_candidate_sets(candidate_sets, output)
+    typer.echo(
+        " ".join(
+            [
+                f"queries={len(candidate_sets)}",
+                f"labels_copied={copied}",
+                f"unlabeled_remaining={remaining}",
+                f"output={output}",
+            ]
+        )
+    )
 
 
 @cli.command("compile-labels")
