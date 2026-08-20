@@ -17,6 +17,14 @@ def test_ml_extra_includes_sentence_transformers_training_dependencies() -> None
     )
 
 
+def test_nli_extra_is_explicit_and_local_model_ready() -> None:
+    dependencies = _optional_dependencies()["nli"]
+
+    assert any(dependency.startswith("transformers") for dependency in dependencies)
+    assert any(dependency.startswith("torch") for dependency in dependencies)
+    assert any(dependency.startswith("sentencepiece") for dependency in dependencies)
+
+
 def test_accelerated_runtime_extras_are_explicit() -> None:
     optional = _optional_dependencies()
 
