@@ -8,6 +8,12 @@ export type EvidenceRole =
   | "supporting";
 
 export type EvidenceFacetKind = "location" | "institution" | "keyword";
+export type ClaimStance =
+  | "supports"
+  | "mixed"
+  | "contradicts"
+  | "insufficient"
+  | "not_an_effect_claim";
 
 export type EvidenceHit = {
   chunk_id: string;
@@ -69,6 +75,28 @@ export type TransferabilityPair = {
   shared_keywords: string[];
 };
 
+export type GroundedEvidenceClaim = {
+  claim_id: string;
+  evaluation_id: string;
+  chunk_id: string;
+  section: string | null;
+  evidence_role: EvidenceRole;
+  statement: string;
+  source_span_start: number;
+  source_span_end: number;
+  stance: ClaimStance;
+  confidence: number;
+  stance_basis: string[];
+  explicit_conditions: string[];
+  source_url: string;
+};
+
+export type ClaimStanceCoverage = {
+  stance: ClaimStance;
+  evaluation_count: number;
+  claim_count: number;
+};
+
 export type CrossEvaluationSynthesis = {
   evaluation_count: number;
   passage_count: number;
@@ -76,6 +104,10 @@ export type CrossEvaluationSynthesis = {
   role_coverage: EvidenceRoleCoverage[];
   recurring_facets: CrossEvaluationFacet[];
   transferability_pairs: TransferabilityPair[];
+  claim_extractor: string | null;
+  claims: GroundedEvidenceClaim[];
+  stance_coverage: ClaimStanceCoverage[];
+  effect_claim_evaluation_count: number;
   caveats: string[];
 };
 
