@@ -31,7 +31,10 @@ _NEGATIVE_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(r"\bno evidence of (?:an? )?(?:effect|impact|improvement|benefit)\b", re.IGNORECASE),
-    re.compile(r"\blittle evidence of (?:an? )?(?:effect|impact|improvement|benefit)\b", re.IGNORECASE),
+    re.compile(
+        r"\blittle evidence of (?:an? )?(?:effect|impact|improvement|benefit)\b",
+        re.IGNORECASE,
+    ),
     re.compile(
         r"\bdid not (?:improve|increase|reduce|strengthen|enhance|lead|result|contribute)\b",
         re.IGNORECASE,
@@ -57,7 +60,10 @@ _POSITIVE_PATTERNS = (
     re.compile(r"\bstrengthened?\b", re.IGNORECASE),
     re.compile(r"\benhanced?\b", re.IGNORECASE),
     re.compile(
-        r"\bincreased? (?:access|coverage|uptake|attendance|completion|learning|income|productivity)\b",
+        (
+            r"\bincreased? (?:access|coverage|uptake|attendance|completion|learning|"
+            r"income|productivity)\b"
+        ),
         re.IGNORECASE,
     ),
     re.compile(
