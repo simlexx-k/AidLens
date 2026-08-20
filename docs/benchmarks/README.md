@@ -78,7 +78,7 @@ entry has no plaintext source URL. Two duplicate-title groups remain retained;
 equal titles with distinct archive IDs are not treated as sufficient evidence
 for deletion without content-level confirmation.
 
-## 2. Generate the V0.6 candidate pool
+## 2. Generate and label the V0.6 candidate pool
 
 V0.6 includes `apps/api/benchmarks/queries.v1.jsonl`: 30 questions balanced
 across six evidence intents:
@@ -90,7 +90,7 @@ across six evidence intents:
 - implementation factors
 - transferability context
 
-Generate a diversified human-review pool:
+The first 30-query candidate set was generated from hybrid retrieval:
 
 ```bash
 docker compose run --rm api \
@@ -102,19 +102,12 @@ docker compose run --rm api \
   --max-per-evaluation 3
 ```
 
-Candidate export oversamples production retrieval and caps the annotation pool
-at three passages per evaluation. Each candidate retains its original
-`retrieval_rank`, query family, evaluation ID, section, passage text, lexical
-score, semantic score, fused score, and a nullable `relevance` field.
-
-## 3. Label every candidate 0-3
-
 Review every candidate and replace `relevance: null` with a value from 0 to 3.
-V0.6 compilation is intentionally strict: a partially labeled query is rejected,
-and a query with no positive evidence is not silently admitted to the benchmark.
+Compilation is intentionally strict: a partially labeled query is rejected, and
+a query with no positive evidence is not silently admitted to the benchmark.
 
-Once the pool is fully reviewed, compile both evaluation truth and future
-AidRanker supervision from the same labels:
+Compile both evaluation truth and future AidRanker supervision from the same
+labels:
 
 ```bash
 docker compose run --rm api \
@@ -127,29 +120,87 @@ docker compose run --rm api \
 Positive passages become anchor-aware benchmark judgments. Relevance-0 passages
 remain in the ranker dataset as hard negatives.
 
-## 4. Compare retrieval modes
+## 3. V0.6 benchmark result and selection-bias caveat
 
-Raw ranking:
+The first 30-query diversified benchmark with `BAAI/bge-base-en-v1.5`,
+`top_k=10`, and `max_per_evaluation=3` produced:
+
+| Mode | Recall@10 | MRR | nDCG@10 |
+| --- | ---: | ---: | ---: |
+| Lexical | 0.092174 | 0.286111 | 0.117938 |
+| Semantic | 0.579470 | 0.944444 | 0.613957 |
+| Hybrid | 0.584814 | 0.961111 | 0.614439 |
+
+These numbers are useful as a retrieval smoke test, but they are not yet a fair
+model-selection benchmark. The human judgments were compiled from candidates
+surfaced by hybrid retrieval only. That means the positive set is conditioned on
+one of the systems being evaluated, which can undercount relevant lexical-only
+or semantic-only passages and structurally advantage the source system.
+
+Do not use the V0.6 numbers alone to select fusion weights or claim that hybrid
+is superior to semantic retrieval.
+
+## 4. V0.7 pooled judging
+
+V0.7 removes the hybrid-only candidate-pool dependency. Build a judging pool from
+independent lexical, semantic, and hybrid ranked lists:
 
 ```bash
 docker compose run --rm api \
-  python -m app.cli benchmark \
-  benchmarks/judgments-v1.local.jsonl \
+  python -m app.cli export-pooled-candidates \
+  benchmarks/queries.v1.jsonl \
+  --output benchmarks/candidates-v2-pooled.local.jsonl \
   --modes lexical,semantic,hybrid \
-  --top-k 10 \
-  --output benchmarks/report-v1-raw.local.json
+  --per-mode-k 20 \
+  --max-per-evaluation 5
 ```
 
-Product-facing diversified ranking:
+The pooled export:
+
+- retrieves each mode independently using the same production search engine
+- deduplicates candidates by chunk UUID
+- rotates mode traversal by rank depth so one configured retriever does not win
+  every tie
+- applies the annotation-only per-evaluation cap after cross-mode pooling
+- records `retrieval_modes` and `mode_ranks` for every pooled passage
+
+The benchmark-pool cap defaults to five passages per evaluation, intentionally
+higher than the product-facing three-passage diversity cap. Product presentation
+and ground-truth discovery are different concerns.
+
+Reuse labels from the already reviewed V0.6 candidate pool before doing new
+human work:
+
+```bash
+docker compose run --rm api \
+  python -m app.cli carry-forward-labels \
+  benchmarks/candidates-v2-pooled.local.jsonl \
+  --previous benchmarks/candidates-v1.local.jsonl \
+  --output benchmarks/candidates-v2-pooled-seeded.local.jsonl
+```
+
+The command reports how many query/chunk labels were copied and how many newly
+surfaced passages still require review. Review only the remaining
+`relevance: null` candidates, then compile the pooled benchmark:
+
+```bash
+docker compose run --rm api \
+  python -m app.cli compile-labels \
+  benchmarks/candidates-v2-pooled-seeded.local.jsonl \
+  --judgments-output benchmarks/judgments-v2-pooled.local.jsonl \
+  --ranker-output benchmarks/ranker-v2-pooled.local.jsonl
+```
+
+Now rerun the fair comparison:
 
 ```bash
 docker compose run --rm api \
   python -m app.cli benchmark \
-  benchmarks/judgments-v1.local.jsonl \
+  benchmarks/judgments-v2-pooled.local.jsonl \
   --modes lexical,semantic,hybrid \
   --top-k 10 \
   --max-per-evaluation 3 \
-  --output benchmarks/report-v1-diverse3.local.json
+  --output benchmarks/report-v2-pooled-diverse3.local.json
 ```
 
 Reports contain overall and per-query-family:
@@ -160,25 +211,11 @@ Reports contain overall and per-query-family:
 - unique evaluations at K
 - duplicate share at K
 
-The first live four-query baseline with `BAAI/bge-base-en-v1.5` was:
+## 5. Prepare AidRanker only after pooled benchmark validation
 
-| Mode | Recall@10 | MRR | nDCG@10 |
-| --- | ---: | ---: | ---: |
-| Lexical | 0.125 | 0.375 | 0.075385 |
-| Semantic | 0.750 | 0.791667 | 0.615354 |
-| Hybrid | 0.791667 | 0.875 | 0.631609 |
-
-With a three-passage-per-evaluation cap, the four-query hybrid smoke test
-improved to Recall@10 `0.916667`, MRR `0.875`, and nDCG@10 `0.682006`, while
-mean unique evaluations rose from `3.25` to `4.5` and duplicate share fell from
-`0.675` to `0.475`.
-
-V0.6 deepens the retrieval pool before applying this cap so heavily concentrated
-queries are less likely to return fewer than the requested `top_k`.
-
-## 5. Prepare AidRanker only after benchmark expansion
-
-The compiled ranker file is the starting point for a cross-encoder/reranker. Do
-not train AidRanker on the original four-query smoke test. Expand human judgments,
-split queries into development and held-out test sets, and retain high-ranked
-relevance-0 lexical/semantic/hybrid candidates as hard negatives.
+The compiled ranker file is the starting point for a cross-encoder/reranker.
+Do not train or select AidRanker against the hybrid-only V0.6 judging pool.
+First finish pooled judgments, rerun lexical/semantic/hybrid against the pooled
+truth, and then split queries by family into development and held-out test sets.
+Retain high-ranked relevance-0 candidates from all retrieval modes as hard
+negatives.
