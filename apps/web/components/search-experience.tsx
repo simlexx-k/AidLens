@@ -76,11 +76,11 @@ export function SearchExperience() {
     <section className="search-shell">
       <div className="search-heading">
         <span className="eyebrow">Development evidence intelligence</span>
-        <h1>Compare evidence across evaluations without losing the source.</h1>
+        <h1>See what the evidence says, where it says it, and where it abstains.</h1>
         <p>
-          AidLens ranks passages, groups them back into evaluations, and maps recurring
-          evidence and context signals across the result set. It does not turn metadata
-          overlap into causal claims or transferability verdicts.
+          AidLens ranks passages, groups them into evaluations, maps recurring context,
+          and now extracts source-grounded effect claims. Stance comes only from explicit
+          text in the cited sentence, never from section labels or metadata alone.
         </p>
       </div>
       <form onSubmit={onSubmit}>
@@ -186,22 +186,71 @@ function SynthesisPanel({
   const keywords = synthesis.recurring_facets.filter((facet) => facet.kind === "keyword").slice(0, 8);
   const contexts = synthesis.recurring_facets.filter((facet) => facet.kind !== "keyword").slice(0, 8);
   const titleById = new Map(groups.map((group) => [group.evaluation_id, group.title]));
+  const visibleClaims = synthesis.claims.slice(0, 10);
 
   return (
     <section className="synthesis-panel">
       <div className="synthesis-heading">
         <div>
           <span className="eyebrow">Cross-evaluation evidence map</span>
-          <h2>What recurs across these results?</h2>
+          <h2>What does the returned evidence explicitly report?</h2>
         </div>
-        <span className="synthesis-scope">Result-set synthesis</span>
+        <span className="synthesis-scope">Grounded result-set synthesis</span>
       </div>
 
       <div className="synthesis-metrics">
         <div><strong>{synthesis.evaluation_count}</strong><span>evaluations compared</span></div>
-        <div><strong>{synthesis.outcome_evaluation_count}</strong><span>with outcome evidence</span></div>
-        <div><strong>{synthesis.recurring_facets.length}</strong><span>recurring context/theme signals</span></div>
+        <div><strong>{synthesis.effect_claim_evaluation_count}</strong><span>with effect-language claims</span></div>
+        <div><strong>{synthesis.claims.length}</strong><span>grounded claim assessments</span></div>
         <div><strong>{synthesis.transferability_pairs.length}</strong><span>context-overlap pairs</span></div>
+      </div>
+
+      <div className="stance-summary">
+        <span className="synthesis-label">Reported effect stance · explicit text only</span>
+        <div className="coverage-list">
+          {synthesis.stance_coverage.map((coverage) => (
+            <span key={coverage.stance} className={`stance-chip stance-${coverage.stance}`}>
+              {stanceLabel(coverage.stance)} · {coverage.evaluation_count} eval · {coverage.claim_count} claim
+              {coverage.claim_count === 1 ? "" : "s"}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="claim-ledger">
+        <div className="claim-ledger-heading">
+          <div>
+            <span className="synthesis-label">Grounded claim register</span>
+            <p>Exact source sentences; no generated paraphrase.</p>
+          </div>
+          {synthesis.claim_extractor && <code>{synthesis.claim_extractor}</code>}
+        </div>
+        {visibleClaims.length ? visibleClaims.map((claim) => (
+          <article className="grounded-claim" key={claim.claim_id}>
+            <div className="claim-meta">
+              <span className={`stance-badge stance-${claim.stance}`}>
+                {stanceLabel(claim.stance)}
+              </span>
+              <span>{claim.evaluation_id}</span>
+              <span>{claim.section?.replaceAll("_", " ") ?? claim.evidence_role}</span>
+              <span>{Math.round(claim.confidence * 100)}% signal confidence</span>
+              <a href={claim.source_url} target="_blank" rel="noreferrer">source ↗</a>
+            </div>
+            <p className="claim-statement">“{claim.statement}”</p>
+            {claim.stance_basis.length > 0 && (
+              <div className="claim-basis">
+                <strong>Basis</strong>
+                <span>{claim.stance_basis.join(" · ")}</span>
+              </div>
+            )}
+            {claim.explicit_conditions.length > 0 && (
+              <div className="claim-basis">
+                <strong>Explicit conditions</strong>
+                <span>{claim.explicit_conditions.join(" · ")}</span>
+              </div>
+            )}
+          </article>
+        )) : <p>No claim assessment could be extracted from these returned passages.</p>}
       </div>
 
       <div className="synthesis-grid">
@@ -271,8 +320,7 @@ function SynthesisPanel({
       </div>
 
       <p className="synthesis-caveat">
-        {synthesis.caveats[0]} {synthesis.caveats[1]} AidLens does not infer contradictory
-        effect stance here; open the ranked passages below before drawing effect conclusions.
+        {synthesis.caveats.join(" ")}
       </p>
     </section>
   );
@@ -341,4 +389,8 @@ function EvidenceGroup({ group }: { group: EvidenceEvaluationGroup }) {
 
 function shortTitle(value: string): string {
   return value.length > 42 ? `${value.slice(0, 39)}…` : value;
+}
+
+function stanceLabel(value: string): string {
+  return value.replaceAll("_", " ");
 }
